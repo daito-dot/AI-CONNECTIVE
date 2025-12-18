@@ -8,7 +8,7 @@ Globals:
     MemorySize: 512
     Runtime: nodejs20.x
     Architectures:
-      - arm64
+      - x86_64
     Environment:
       Variables:
         AWS_REGION: !Ref AWS::Region
