@@ -6,6 +6,7 @@ import {
   FileInfo,
   ChatHistory,
   User,
+  UsageInfo,
   MODEL_CONFIGS,
   DEFAULT_MODEL,
   getModelInfo,
@@ -127,12 +128,26 @@ const App: React.FC = () => {
         userFiles
       );
 
+      // Calculate cost based on usage and model pricing
+      const modelInfo = getModelInfo(activeModel);
+      let usage: UsageInfo | undefined;
+      if (response.usage) {
+        const inputCost = (response.usage.inputTokens / 1_000_000) * modelInfo.pricing.input;
+        const outputCost = (response.usage.outputTokens / 1_000_000) * modelInfo.pricing.output;
+        usage = {
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+          cost: inputCost + outputCost,
+        };
+      }
+
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response,
+        content: response.content,
         timestamp: Date.now(),
-        model: activeModel
+        model: activeModel,
+        usage,
       };
 
       setHistories(prev => prev.map(h =>
@@ -251,7 +266,7 @@ const App: React.FC = () => {
                     <optgroup key={group} label={group}>
                       {models.map(model => (
                         <option key={model.id} value={model.id}>
-                          {model.name} - {model.description}
+                          {model.name} - ${model.pricing.input}/${model.pricing.output}/1M
                         </option>
                       ))}
                     </optgroup>
@@ -310,8 +325,14 @@ const App: React.FC = () => {
                     <div className="whitespace-pre-wrap leading-relaxed">
                       {msg.content}
                     </div>
-                    <div className="mt-2 text-[10px] opacity-40 flex justify-between items-center">
+                    <div className="mt-2 text-[10px] opacity-40 flex justify-between items-center gap-4">
                       <span>{msg.model && getModelInfo(msg.model)?.name}</span>
+                      {msg.usage && (
+                        <span className="flex items-center gap-2">
+                          <span>{msg.usage.inputTokens.toLocaleString()}+{msg.usage.outputTokens.toLocaleString()} tokens</span>
+                          <span className="text-[#A18E66] font-semibold">${msg.usage.cost?.toFixed(4)}</span>
+                        </span>
+                      )}
                       <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
                     </div>
                   </div>
@@ -420,15 +441,21 @@ const App: React.FC = () => {
                             {models.map(model => (
                               <div
                                 key={model.id}
-                                className={`p-3 rounded-lg border ${
+                                onClick={() => setActiveModel(model.id)}
+                                className={`p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
                                   activeModel === model.id
                                     ? 'border-[#A18E66] bg-[#A18E66]/10'
-                                    : 'border-[#1E3D6B]/10'
+                                    : 'border-[#1E3D6B]/10 hover:border-[#A18E66]/50'
                                 }`}
                               >
-                                <p className="text-sm font-bold">{model.name}</p>
+                                <div className="flex justify-between items-start">
+                                  <p className="text-sm font-bold">{model.name}</p>
+                                  <span className="text-[9px] font-mono text-[#A18E66] font-semibold">
+                                    ${model.pricing.input}/${model.pricing.output}
+                                  </span>
+                                </div>
                                 <p className="text-[10px] opacity-50">{model.description}</p>
-                                <div className="mt-1 flex gap-1">
+                                <div className="mt-1 flex gap-1 flex-wrap">
                                   {model.supportsImages && (
                                     <span className="text-[8px] px-1 py-0.5 bg-blue-100 text-blue-600 rounded">画像</span>
                                   )}
@@ -439,6 +466,9 @@ const App: React.FC = () => {
                                     'bg-gray-100 text-gray-600'
                                   }`}>
                                     {model.category}
+                                  </span>
+                                  <span className="text-[8px] px-1 py-0.5 bg-gray-100 text-gray-500 rounded">
+                                    /1M tokens
                                   </span>
                                 </div>
                               </div>

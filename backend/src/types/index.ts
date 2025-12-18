@@ -20,10 +20,16 @@ export type BedrockModel =
 
 // Gemini Models
 export type GeminiModel =
-  | 'gemini-2.5-flash-preview-05-20'
-  | 'gemini-2.5-pro-preview-05-06';
+  | 'gemini-3-flash-preview'
+  | 'gemini-3-pro-preview';
 
 export type AIModel = BedrockModel | GeminiModel;
+
+// Pricing per 1M tokens (USD)
+export interface ModelPricing {
+  input: number;   // $ per 1M input tokens
+  output: number;  // $ per 1M output tokens
+}
 
 // Model metadata for UI
 export interface ModelInfo {
@@ -34,6 +40,7 @@ export interface ModelInfo {
   category: 'reasoning' | 'balanced' | 'fast' | 'code' | 'multimodal';
   supportsImages: boolean;
   maxTokens: number;
+  pricing: ModelPricing;
 }
 
 // Chat request/response types
