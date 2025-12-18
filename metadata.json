@@ -1,0 +1,8 @@
+{
+  "name": "Elegance AI Chat",
+  "description": "A sophisticated AI chat interface featuring selectable models, file management, and a tactile, paper-like design in Navy Blue and Golden Brown.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
