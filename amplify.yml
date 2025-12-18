@@ -1,0 +1,37 @@
+version: 1
+applications:
+  # Frontend Application
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: dist
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+      buildPath: /
+    appRoot: .
+
+  # Backend API (SAM)
+  - backend:
+      phases:
+        preBuild:
+          commands:
+            - cd backend && npm ci
+        build:
+          commands:
+            - cd backend && npm run build
+            - sam build --template-file backend/template.yaml
+            - sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name ai-connective-${AWS_BRANCH} --parameter-overrides Environment=${AWS_BRANCH} GeminiApiKey=${GEMINI_API_KEY}
+      artifacts:
+        baseDirectory: backend/dist
+        files:
+          - '**/*'
+    appRoot: backend
