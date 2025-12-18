@@ -1,14 +1,17 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  AIModel, 
-  Message, 
-  FileInfo, 
-  ChatHistory, 
-  User 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  AIModel,
+  Message,
+  FileInfo,
+  ChatHistory,
+  User,
+  MODEL_CONFIGS,
+  DEFAULT_MODEL,
+  getModelInfo,
 } from './types';
 import { COLORS, ICONS } from './constants';
-import { geminiService } from './services/geminiService';
+import { apiService } from './services/apiService';
 
 // --- Mock Data ---
 const DEFAULT_USER: User = {
@@ -23,6 +26,16 @@ const SYSTEM_FILES_INIT: FileInfo[] = [
   { name: 'Policy.docx', size: 2048, type: 'application/msword', data: 'Privacy Policy Content...', isSystem: true }
 ];
 
+// Group models by provider for UI
+const GROUPED_MODELS = {
+  'Anthropic Claude': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('anthropic.')),
+  'Amazon Nova': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('amazon.')),
+  'Meta Llama': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('meta.')),
+  'Mistral': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('mistral.')),
+  'DeepSeek': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('deepseek.')),
+  'Google Gemini': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('gemini')),
+};
+
 // --- Components ---
 
 const SidebarItem: React.FC<{
@@ -33,8 +46,8 @@ const SidebarItem: React.FC<{
   <button
     onClick={onClick}
     className={`w-full text-left px-4 py-3 rounded-lg mb-1 transition-all duration-200 flex items-center gap-3 ${
-      active 
-        ? 'bg-[#1E3D6B] text-white shadow-md' 
+      active
+        ? 'bg-[#1E3D6B] text-white shadow-md'
         : 'text-[#1E3D6B] hover:bg-[#A18E66]/10'
     }`}
   >
@@ -44,7 +57,7 @@ const SidebarItem: React.FC<{
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_USER);
-  const [activeModel, setActiveModel] = useState<AIModel>(AIModel.FLASH);
+  const [activeModel, setActiveModel] = useState<AIModel>(DEFAULT_MODEL);
   const [histories, setHistories] = useState<ChatHistory[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [systemFiles, setSystemFiles] = useState<FileInfo[]>(SYSTEM_FILES_INIT);
@@ -52,8 +65,16 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Check API status on mount
+  useEffect(() => {
+    apiService.checkHealth().then(isOnline => {
+      setApiStatus(isOnline ? 'online' : 'offline');
+    });
+  }, []);
 
   // Initialize a first chat
   useEffect(() => {
@@ -75,6 +96,7 @@ const App: React.FC = () => {
   }, [histories, activeChatId]);
 
   const activeChat = histories.find(h => h.id === activeChatId);
+  const currentModelInfo = getModelInfo(activeModel);
 
   const handleSendMessage = async () => {
     if (!input.trim() || !activeChatId || isLoading) return;
@@ -88,17 +110,17 @@ const App: React.FC = () => {
     };
 
     const updatedMessages = [...(activeChat?.messages || []), userMsg];
-    
-    setHistories(prev => prev.map(h => 
-      h.id === activeChatId 
-        ? { ...h, messages: updatedMessages, updatedAt: Date.now(), title: input.substring(0, 15) } 
+
+    setHistories(prev => prev.map(h =>
+      h.id === activeChatId
+        ? { ...h, messages: updatedMessages, updatedAt: Date.now(), title: input.substring(0, 15) }
         : h
     ));
     setInput('');
     setIsLoading(true);
 
     try {
-      const response = await geminiService.generateChatResponse(
+      const response = await apiService.generateChatResponse(
         activeModel,
         updatedMessages,
         systemFiles,
@@ -113,13 +135,25 @@ const App: React.FC = () => {
         model: activeModel
       };
 
-      setHistories(prev => prev.map(h => 
-        h.id === activeChatId 
-          ? { ...h, messages: [...updatedMessages, aiMsg], updatedAt: Date.now() } 
+      setHistories(prev => prev.map(h =>
+        h.id === activeChatId
+          ? { ...h, messages: [...updatedMessages, aiMsg], updatedAt: Date.now() }
           : h
       ));
     } catch (error) {
       console.error(error);
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `エラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+        model: activeModel
+      };
+      setHistories(prev => prev.map(h =>
+        h.id === activeChatId
+          ? { ...h, messages: [...updatedMessages, errorMsg], updatedAt: Date.now() }
+          : h
+      ));
     } finally {
       setIsLoading(false);
     }
@@ -168,10 +202,10 @@ const App: React.FC = () => {
           <div className="w-10 h-10 rounded-full bg-[#1E3D6B] flex items-center justify-center text-[#A18E66]">
             <ICONS.Admin />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Elegance AI</h1>
+          <h1 className="text-xl font-bold tracking-tight">AI Connective</h1>
         </div>
 
-        <button 
+        <button
           onClick={createNewChat}
           className="w-full flex items-center justify-center gap-2 py-3 px-4 mb-6 border-2 border-dashed border-[#A18E66] text-[#A18E66] rounded-xl hover:bg-[#A18E66]/5 transition-colors font-semibold"
         >
@@ -181,9 +215,9 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
           <p className="text-xs font-bold text-[#A18E66] uppercase tracking-wider mb-2 px-2">Recent Chats</p>
           {histories.map(h => (
-            <SidebarItem 
-              key={h.id} 
-              active={activeChatId === h.id} 
+            <SidebarItem
+              key={h.id}
+              active={activeChatId === h.id}
               onClick={() => setActiveChatId(h.id)}
             >
               <ICONS.History />
@@ -207,15 +241,34 @@ const App: React.FC = () => {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium opacity-60">モデル:</span>
-              <select 
-                value={activeModel} 
+              <select
+                value={activeModel}
                 onChange={(e) => setActiveModel(e.target.value as AIModel)}
-                className="bg-white border border-[#1E3D6B]/20 rounded-lg px-3 py-1.5 text-sm font-semibold focus:ring-2 focus:ring-[#A18E66] outline-none"
+                className="bg-white border border-[#1E3D6B]/20 rounded-lg px-3 py-1.5 text-sm font-semibold focus:ring-2 focus:ring-[#A18E66] outline-none min-w-[200px]"
               >
-                <option value={AIModel.FLASH}>Gemini 3 Flash</option>
-                <option value={AIModel.PRO}>Gemini 3 Pro</option>
-                <option value={AIModel.IMAGE}>Gemini 2.5 Flash Image</option>
+                {Object.entries(GROUPED_MODELS).map(([group, models]) => (
+                  models.length > 0 && (
+                    <optgroup key={group} label={group}>
+                      {models.map(model => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} - {model.description}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                ))}
               </select>
+            </div>
+            {/* API Status Indicator */}
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                apiStatus === 'online' ? 'bg-green-500' :
+                apiStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
+              }`} />
+              <span className="text-xs opacity-50">
+                {apiStatus === 'online' ? 'API Online' :
+                 apiStatus === 'offline' ? 'API Offline' : 'Checking...'}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -235,12 +288,12 @@ const App: React.FC = () => {
                 <ICONS.History />
               </div>
               <h2 className="text-2xl font-light italic">どのようにお手伝いしましょうか？</h2>
-              <p className="mt-2 text-sm">ファイルの参照や複雑な思考プロセスにも対応しています。</p>
+              <p className="mt-2 text-sm">複数のAIモデル（Claude, Nova, Llama, Gemini等）に対応しています。</p>
             </div>
           ) : (
             activeChat?.messages.map((msg) => (
-              <div 
-                key={msg.id} 
+              <div
+                key={msg.id}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`max-w-[80%] flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -250,15 +303,16 @@ const App: React.FC = () => {
                     {msg.role === 'user' ? 'U' : 'AI'}
                   </div>
                   <div className={`paper-card p-4 paper-shadow ${
-                    msg.role === 'user' 
-                      ? 'bg-[#1E3D6B] text-white rounded-tr-none' 
+                    msg.role === 'user'
+                      ? 'bg-[#1E3D6B] text-white rounded-tr-none'
                       : 'bg-white text-[#1E3D6B] rounded-tl-none border-l-4 border-[#A18E66]'
                   }`}>
                     <div className="whitespace-pre-wrap leading-relaxed">
                       {msg.content}
                     </div>
-                    <div className="mt-2 text-[10px] opacity-40 text-right">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    <div className="mt-2 text-[10px] opacity-40 flex justify-between items-center">
+                      <span>{msg.model && getModelInfo(msg.model)?.name}</span>
+                      <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
                     </div>
                   </div>
                 </div>
@@ -273,7 +327,9 @@ const App: React.FC = () => {
                   <div className="w-2 h-2 bg-[#A18E66] rounded-full animate-bounce [animation-delay:0.2s]"></div>
                   <div className="w-2 h-2 bg-[#A18E66] rounded-full animate-bounce [animation-delay:0.4s]"></div>
                 </div>
-                <span className="text-xs text-[#A18E66] font-medium italic">思考中...</span>
+                <span className="text-xs text-[#A18E66] font-medium italic">
+                  {currentModelInfo?.name}が思考中...
+                </span>
               </div>
             </div>
           )}
@@ -287,7 +343,7 @@ const App: React.FC = () => {
               {userFiles.map(file => (
                 <div key={file.name} className="flex items-center gap-2 bg-[#A18E66]/10 px-3 py-1.5 rounded-full border border-[#A18E66]/20 text-xs">
                   <span className="truncate max-w-[120px] font-medium">{file.name}</span>
-                  <button 
+                  <button
                     onClick={() => removeUserFile(file.name)}
                     className="hover:text-red-500 transition-colors"
                   >
@@ -302,7 +358,7 @@ const App: React.FC = () => {
                 <ICONS.Paperclip />
                 <input type="file" className="hidden" onChange={handleFileUpload} />
               </label>
-              <textarea 
+              <textarea
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -315,12 +371,12 @@ const App: React.FC = () => {
                 placeholder="メッセージを入力..."
                 className="flex-1 bg-transparent border-none focus:ring-0 px-2 py-3 resize-none custom-scrollbar max-h-48 text-[#1E3D6B] placeholder-[#1E3D6B]/30"
               />
-              <button 
+              <button
                 onClick={handleSendMessage}
                 disabled={isLoading || !input.trim()}
                 className={`p-3 rounded-xl transition-all duration-300 ${
-                  input.trim() 
-                    ? 'bg-[#1E3D6B] text-white shadow-lg shadow-[#1E3D6B]/20 hover:-translate-y-0.5' 
+                  input.trim()
+                    ? 'bg-[#1E3D6B] text-white shadow-lg shadow-[#1E3D6B]/20 hover:-translate-y-0.5'
                     : 'bg-gray-100 text-gray-300 cursor-not-allowed'
                 }`}
               >
@@ -328,7 +384,7 @@ const App: React.FC = () => {
               </button>
             </div>
             <p className="mt-2 text-center text-[10px] opacity-40 uppercase tracking-widest font-bold">
-              Powered by Google Gemini | Refined by Elegance UI
+              Powered by AWS Bedrock & Google Gemini | Multi-Model AI Platform
             </p>
           </div>
         </div>
@@ -341,7 +397,7 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-bold flex items-center gap-3 text-[#1E3D6B]">
                   <ICONS.Settings /> 管理者 & 設定
                 </h2>
-                <button 
+                <button
                   onClick={() => setShowSettings(false)}
                   className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100"
                 >
@@ -350,6 +406,50 @@ const App: React.FC = () => {
               </div>
 
               <div className="space-y-8">
+                {/* Available Models */}
+                <section>
+                  <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
+                    利用可能なモデル
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(GROUPED_MODELS).map(([group, models]) => (
+                      models.length > 0 && (
+                        <div key={group} className="col-span-2">
+                          <p className="text-xs font-bold text-[#1E3D6B]/50 mb-2">{group}</p>
+                          <div className="grid grid-cols-2 gap-2 mb-4">
+                            {models.map(model => (
+                              <div
+                                key={model.id}
+                                className={`p-3 rounded-lg border ${
+                                  activeModel === model.id
+                                    ? 'border-[#A18E66] bg-[#A18E66]/10'
+                                    : 'border-[#1E3D6B]/10'
+                                }`}
+                              >
+                                <p className="text-sm font-bold">{model.name}</p>
+                                <p className="text-[10px] opacity-50">{model.description}</p>
+                                <div className="mt-1 flex gap-1">
+                                  {model.supportsImages && (
+                                    <span className="text-[8px] px-1 py-0.5 bg-blue-100 text-blue-600 rounded">画像</span>
+                                  )}
+                                  <span className={`text-[8px] px-1 py-0.5 rounded ${
+                                    model.category === 'reasoning' ? 'bg-purple-100 text-purple-600' :
+                                    model.category === 'fast' ? 'bg-green-100 text-green-600' :
+                                    model.category === 'code' ? 'bg-orange-100 text-orange-600' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {model.category}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </section>
+
                 {/* System Reference Files */}
                 <section>
                   <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
@@ -397,7 +497,7 @@ const App: React.FC = () => {
                   <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
                     システムステータス
                   </h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="p-4 bg-[#F5F7FA] rounded-xl">
                       <p className="text-[10px] opacity-50 font-bold uppercase">Chat History</p>
                       <p className="text-2xl font-bold text-[#1E3D6B]">{histories.length} Sessions</p>
@@ -405,6 +505,16 @@ const App: React.FC = () => {
                     <div className="p-4 bg-[#F5F7FA] rounded-xl">
                       <p className="text-[10px] opacity-50 font-bold uppercase">Files Loaded</p>
                       <p className="text-2xl font-bold text-[#1E3D6B]">{systemFiles.length + userFiles.length}</p>
+                    </div>
+                    <div className="p-4 bg-[#F5F7FA] rounded-xl">
+                      <p className="text-[10px] opacity-50 font-bold uppercase">API Status</p>
+                      <p className={`text-2xl font-bold ${
+                        apiStatus === 'online' ? 'text-green-600' :
+                        apiStatus === 'offline' ? 'text-red-600' : 'text-yellow-600'
+                      }`}>
+                        {apiStatus === 'online' ? 'Online' :
+                         apiStatus === 'offline' ? 'Offline' : 'Checking'}
+                      </p>
                     </div>
                   </div>
                 </section>

@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AI Connective Backend - Multi-model AI chat API
+
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        GEMINI_API_KEY: !Ref GeminiApiKey
+
+Parameters:
+  GeminiApiKey:
+    Type: String
+    Description: Google Gemini API Key
+    NoEcho: true
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+Resources:
+  # API Gateway
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  # Chat Lambda Function
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-connective-chat-${Environment}
+      CodeUri: ./dist
+      Handler: handlers/chat.handler
+      Description: Handles chat requests to multiple AI models
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: '*'
+      Events:
+        ChatApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /chat
+            Method: POST
+        ChatApiOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /chat
+            Method: OPTIONS
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Format: esm
+        OutExtension:
+          - .js=.mjs
+        EntryPoints:
+          - src/handlers/chat.ts
+        External:
+          - '@aws-sdk/*'
+
+  # Models Lambda Function
+  ModelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-connective-models-${Environment}
+      CodeUri: ./dist
+      Handler: handlers/chat.modelsHandler
+      Description: Returns available AI models
+      Events:
+        ModelsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /models
+            Method: GET
+        ModelsApiOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /models
+            Method: OPTIONS
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Format: esm
+        OutExtension:
+          - .js=.mjs
+        EntryPoints:
+          - src/handlers/chat.ts
+        External:
+          - '@aws-sdk/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+  ChatFunctionArn:
+    Description: Chat Lambda Function ARN
+    Value: !GetAtt ChatFunction.Arn
+  ModelsFunctionArn:
+    Description: Models Lambda Function ARN
+    Value: !GetAtt ModelsFunction.Arn
