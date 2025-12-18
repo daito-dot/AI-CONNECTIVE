@@ -43,7 +43,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ai-connective-chat-${Environment}
-      CodeUri: ./dist
+      CodeUri: .
       Handler: handlers/chat.handler
       Description: Handles chat requests to multiple AI models
       Policies:
@@ -84,7 +84,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ai-connective-models-${Environment}
-      CodeUri: ./dist
+      CodeUri: .
       Handler: handlers/chat.modelsHandler
       Description: Returns available AI models
       Events:
