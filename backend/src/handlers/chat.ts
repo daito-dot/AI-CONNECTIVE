@@ -7,7 +7,7 @@ const CORS_HEADERS = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-  'Access-Control-Allow-Methods': 'POST,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
 function createResponse(statusCode: number, body: object): APIGatewayResponse {
@@ -65,7 +65,12 @@ export async function handler(event: APIGatewayEvent): Promise<APIGatewayRespons
 }
 
 // Models endpoint - returns available models
-export async function modelsHandler(_event: APIGatewayEvent): Promise<APIGatewayResponse> {
+export async function modelsHandler(event: APIGatewayEvent): Promise<APIGatewayResponse> {
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return createResponse(200, {});
+  }
+
   const { getAllModels } = await import('../config/models.js');
   return createResponse(200, { models: getAllModels() });
 }

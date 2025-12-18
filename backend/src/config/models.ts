@@ -10,6 +10,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'reasoning',
     supportsImages: true,
     maxTokens: 4096,
+    pricing: { input: 15, output: 75 },
   },
   'anthropic.claude-sonnet-4-5-20250918-v1:0': {
     id: 'anthropic.claude-sonnet-4-5-20250918-v1:0',
@@ -19,6 +20,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'balanced',
     supportsImages: true,
     maxTokens: 4096,
+    pricing: { input: 3, output: 15 },
   },
   'anthropic.claude-haiku-4-5-20251022-v1:0': {
     id: 'anthropic.claude-haiku-4-5-20251022-v1:0',
@@ -28,6 +30,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'fast',
     supportsImages: true,
     maxTokens: 4096,
+    pricing: { input: 0.8, output: 4 },
   },
 
   // Amazon Nova (Bedrock)
@@ -39,6 +42,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'reasoning',
     supportsImages: true,
     maxTokens: 5000,
+    pricing: { input: 0.8, output: 3.2 },
   },
   'amazon.nova-lite-v2:0': {
     id: 'amazon.nova-lite-v2:0',
@@ -48,6 +52,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'fast',
     supportsImages: true,
     maxTokens: 5000,
+    pricing: { input: 0.06, output: 0.24 },
   },
 
   // Meta Llama (Bedrock)
@@ -59,6 +64,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'balanced',
     supportsImages: false,
     maxTokens: 4096,
+    pricing: { input: 0.17, output: 0.17 },
   },
   'meta.llama3-3-70b-instruct-v1:0': {
     id: 'meta.llama3-3-70b-instruct-v1:0',
@@ -68,6 +74,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'reasoning',
     supportsImages: false,
     maxTokens: 4096,
+    pricing: { input: 0.72, output: 0.72 },
   },
 
   // Mistral (Bedrock)
@@ -79,6 +86,7 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'balanced',
     supportsImages: false,
     maxTokens: 4096,
+    pricing: { input: 2, output: 6 },
   },
 
   // DeepSeek (Bedrock)
@@ -90,26 +98,29 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     category: 'code',
     supportsImages: false,
     maxTokens: 4096,
+    pricing: { input: 0.55, output: 2.19 },
   },
 
   // Google Gemini (Direct API)
-  'gemini-2.5-flash-preview-05-20': {
-    id: 'gemini-2.5-flash-preview-05-20',
+  'gemini-3-flash-preview': {
+    id: 'gemini-3-flash-preview',
     provider: 'gemini',
-    name: 'Gemini 2.5 Flash',
-    description: '高速・マルチモーダル',
+    name: 'Gemini 3 Flash',
+    description: '最新・高速マルチモーダル',
     category: 'fast',
     supportsImages: true,
     maxTokens: 8192,
+    pricing: { input: 0.5, output: 3 },
   },
-  'gemini-2.5-pro-preview-05-06': {
-    id: 'gemini-2.5-pro-preview-05-06',
+  'gemini-3-pro-preview': {
+    id: 'gemini-3-pro-preview',
     provider: 'gemini',
-    name: 'Gemini 2.5 Pro',
+    name: 'Gemini 3 Pro',
     description: 'Google最高性能',
     category: 'reasoning',
     supportsImages: true,
     maxTokens: 8192,
+    pricing: { input: 2.5, output: 10 },
   },
 };
 

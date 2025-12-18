@@ -22,7 +22,7 @@ export class ApiService {
     messages: Message[],
     systemFiles: FileInfo[],
     userFiles: FileInfo[]
-  ): Promise<string> {
+  ): Promise<ChatResponse> {
     // Build system prompt with file context
     const allFiles = [...systemFiles, ...userFiles];
     const fileContext =
@@ -72,7 +72,7 @@ ${fileContext}
       }
 
       const data: ChatResponse = await response.json();
-      return data.content;
+      return data;
     } catch (error) {
       console.error('API Error:', error);
       throw error;
