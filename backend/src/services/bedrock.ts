@@ -9,7 +9,7 @@ import {
 import type { ChatMessage, ChatRequest, ChatResponse, BedrockModel } from '../types/index.js';
 
 const client = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.AWS_REGION || 'ap-northeast-1',
 });
 
 function convertToBedrockMessages(messages: ChatMessage[]): Message[] {
