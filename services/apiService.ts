@@ -293,6 +293,99 @@ ${fileContext}
   getModelInfo(modelId: AIModel) {
     return getModelInfo(modelId);
   }
+
+  // ============================================
+  // Authentication Methods
+  // ============================================
+
+  async signUp(email: string, password: string, name: string): Promise<{
+    message: string;
+    userId: string;
+    userConfirmed: boolean;
+  }> {
+    const response = await fetch(`${this.endpoint}/auth/signup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Sign up failed');
+    }
+
+    return response.json();
+  }
+
+  async signIn(email: string, password: string): Promise<{
+    accessToken: string;
+    idToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    user: {
+      userId: string;
+      email: string;
+      name: string;
+      role: string;
+      organizationId?: string;
+      companyId?: string;
+      departmentId?: string;
+    } | null;
+  }> {
+    const response = await fetch(`${this.endpoint}/auth/signin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Sign in failed');
+    }
+
+    return response.json();
+  }
+
+  async getProfile(userId: string): Promise<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    organizationId?: string;
+    companyId?: string;
+    departmentId?: string;
+    createdAt: string;
+  }> {
+    const response = await fetch(`${this.endpoint}/auth/profile?userId=${encodeURIComponent(userId)}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to get profile');
+    }
+
+    return response.json();
+  }
+
+  async updateProfile(userId: string, updates: { name?: string }): Promise<void> {
+    const response = await fetch(`${this.endpoint}/auth/profile?userId=${encodeURIComponent(userId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update profile');
+    }
+  }
 }
 
 export const apiService = new ApiService();
