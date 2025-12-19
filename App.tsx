@@ -7,6 +7,8 @@ import {
   ChatHistory,
   User,
   UsageInfo,
+  UploadedFile,
+  SavedConversation,
   MODEL_CONFIGS,
   DEFAULT_MODEL,
   getModelInfo,
@@ -22,11 +24,6 @@ const DEFAULT_USER: User = {
   avatar: 'https://picsum.photos/seed/user1/100/100'
 };
 
-const SYSTEM_FILES_INIT: FileInfo[] = [
-  { name: 'Guide.pdf', size: 1024, type: 'application/pdf', data: 'System Knowledge Base Content...', isSystem: true },
-  { name: 'Policy.docx', size: 2048, type: 'application/msword', data: 'Privacy Policy Content...', isSystem: true }
-];
-
 // Group models by provider for UI
 const GROUPED_MODELS = {
   'Anthropic Claude': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('anthropic.claude')),
@@ -40,18 +37,30 @@ const GROUPED_MODELS = {
 const SidebarItem: React.FC<{
   active: boolean;
   onClick: () => void;
+  onDelete?: () => void;
   children: React.ReactNode;
-}> = ({ active, onClick, children }) => (
-  <button
-    onClick={onClick}
-    className={`w-full text-left px-4 py-3 rounded-lg mb-1 transition-all duration-200 flex items-center gap-3 ${
-      active
-        ? 'bg-[#1E3D6B] text-white shadow-md'
-        : 'text-[#1E3D6B] hover:bg-[#A18E66]/10'
-    }`}
-  >
-    {children}
-  </button>
+}> = ({ active, onClick, onDelete, children }) => (
+  <div className="relative group">
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3 rounded-lg mb-1 transition-all duration-200 flex items-center gap-3 ${
+        active
+          ? 'bg-[#1E3D6B] text-white shadow-md'
+          : 'text-[#1E3D6B] hover:bg-[#A18E66]/10'
+      }`}
+    >
+      {children}
+    </button>
+    {onDelete && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded text-red-500 transition-all"
+        title="削除"
+      >
+        ×
+      </button>
+    )}
+  </div>
 );
 
 const App: React.FC = () => {
@@ -59,33 +68,67 @@ const App: React.FC = () => {
   const [activeModel, setActiveModel] = useState<AIModel>(DEFAULT_MODEL);
   const [histories, setHistories] = useState<ChatHistory[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [systemFiles, setSystemFiles] = useState<FileInfo[]>(SYSTEM_FILES_INIT);
-  const [userFiles, setUserFiles] = useState<FileInfo[]>([]);
+  const [backendConversationId, setBackendConversationId] = useState<string | null>(null);
+
+  // File management - both local preview and backend uploaded
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showFilesPanel, setShowFilesPanel] = useState(false);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check API status on mount
+  // Set user ID in apiService
   useEffect(() => {
-    apiService.checkHealth().then(isOnline => {
+    apiService.setUserId(currentUser.id);
+  }, [currentUser.id]);
+
+  // Check API status and load data on mount
+  useEffect(() => {
+    const initializeApp = async () => {
+      const isOnline = await apiService.checkHealth();
       setApiStatus(isOnline ? 'online' : 'offline');
-    });
-  }, []);
 
-  // Initialize a first chat
-  useEffect(() => {
-    const newId = Date.now().toString();
-    const initialChat: ChatHistory = {
-      id: newId,
-      title: '新規チャット',
-      messages: [],
-      updatedAt: Date.now()
+      if (isOnline) {
+        // Load uploaded files from backend
+        try {
+          const files = await apiService.listFiles();
+          setUploadedFiles(files);
+        } catch (error) {
+          console.error('Failed to load files:', error);
+        }
+
+        // Load conversation history from backend
+        try {
+          const conversations = await apiService.listConversations(20);
+          if (conversations.length > 0) {
+            const chatHistories: ChatHistory[] = conversations.map(conv => ({
+              id: conv.conversationId,
+              title: conv.title,
+              messages: [],
+              updatedAt: new Date(conv.updatedAt).getTime(),
+            }));
+            setHistories(chatHistories);
+            // Don't auto-select, let user choose or create new
+          }
+        } catch (error) {
+          console.error('Failed to load conversations:', error);
+        }
+      }
+
+      // Create initial chat if none exist
+      if (histories.length === 0) {
+        createNewChat();
+      }
     };
-    setHistories([initialChat]);
-    setActiveChatId(newId);
+
+    initializeApp();
   }, []);
 
   useEffect(() => {
@@ -96,6 +139,48 @@ const App: React.FC = () => {
 
   const activeChat = histories.find(h => h.id === activeChatId);
   const currentModelInfo = getModelInfo(activeModel);
+
+  // Load conversation messages when selecting a saved conversation
+  const loadConversationMessages = async (conversationId: string) => {
+    try {
+      const { conversation, messages } = await apiService.getConversation(conversationId);
+      if (conversation && messages) {
+        const loadedMessages: Message[] = messages.map(msg => ({
+          id: msg.messageId,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.createdAt).getTime(),
+          model: msg.modelId,
+          usage: msg.inputTokens ? {
+            inputTokens: msg.inputTokens,
+            outputTokens: msg.outputTokens || 0,
+            cost: msg.cost,
+          } : undefined,
+        }));
+
+        setHistories(prev => prev.map(h =>
+          h.id === conversationId
+            ? { ...h, messages: loadedMessages }
+            : h
+        ));
+        setBackendConversationId(conversationId);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    setActiveChatId(chatId);
+    const chat = histories.find(h => h.id === chatId);
+
+    // If messages are empty and this might be a backend conversation, load it
+    if (chat && chat.messages.length === 0 && apiStatus === 'online') {
+      await loadConversationMessages(chatId);
+    } else {
+      setBackendConversationId(chatId);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!input.trim() || !activeChatId || isLoading) return;
@@ -122,9 +207,26 @@ const App: React.FC = () => {
       const response = await apiService.generateChatResponse(
         activeModel,
         updatedMessages,
-        systemFiles,
-        userFiles
+        [], // systemFiles - now using backend files
+        [], // userFiles - now using backend files
+        {
+          conversationId: backendConversationId || undefined,
+          fileIds: selectedFileIds.length > 0 ? selectedFileIds : undefined,
+          saveHistory: true,
+        }
       );
+
+      // Update backend conversation ID if new
+      if (response.conversationId && !backendConversationId) {
+        setBackendConversationId(response.conversationId);
+        // Update local chat ID to match backend
+        setHistories(prev => prev.map(h =>
+          h.id === activeChatId
+            ? { ...h, id: response.conversationId! }
+            : h
+        ));
+        setActiveChatId(response.conversationId);
+      }
 
       // Calculate cost based on usage and model pricing
       const modelInfo = getModelInfo(activeModel);
@@ -149,7 +251,7 @@ const App: React.FC = () => {
       };
 
       setHistories(prev => prev.map(h =>
-        h.id === activeChatId
+        h.id === (response.conversationId || activeChatId)
           ? { ...h, messages: [...updatedMessages, aiMsg], updatedAt: Date.now() }
           : h
       ));
@@ -182,29 +284,93 @@ const App: React.FC = () => {
     };
     setHistories(prev => [newChat, ...prev]);
     setActiveChatId(newId);
+    setBackendConversationId(null);
+    setSelectedFileIds([]);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        const newFile: FileInfo = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          data: base64,
-          isSystem: false
-        };
-        setUserFiles(prev => [...prev, newFile]);
-      };
-      reader.readAsDataURL(file);
+  const deleteChat = async (chatId: string) => {
+    // Try to delete from backend
+    if (apiStatus === 'online') {
+      try {
+        await apiService.deleteConversation(chatId);
+      } catch (error) {
+        console.error('Failed to delete conversation from backend:', error);
+      }
+    }
+
+    // Remove from local state
+    setHistories(prev => prev.filter(h => h.id !== chatId));
+    if (activeChatId === chatId) {
+      const remaining = histories.filter(h => h.id !== chatId);
+      if (remaining.length > 0) {
+        setActiveChatId(remaining[0].id);
+      } else {
+        createNewChat();
+      }
     }
   };
 
-  const removeUserFile = (name: string) => {
-    setUserFiles(prev => prev.filter(f => f.name !== name));
+  // File upload to backend (S3)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check supported types
+    const supportedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+
+    if (!supportedTypes.includes(file.type)) {
+      alert(`未対応のファイル形式です。対応形式: PDF, DOCX, TXT, CSV, XLSX`);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await apiService.uploadFile(file);
+      const newFile: UploadedFile = {
+        fileId: result.fileId,
+        fileName: result.fileName,
+        fileType: result.fileName.split('.').pop() as any,
+        status: result.status,
+        uploadedAt: result.uploadedAt,
+        fileSize: file.size,
+      };
+      setUploadedFiles(prev => [newFile, ...prev]);
+      // Auto-select the newly uploaded file
+      setSelectedFileIds(prev => [...prev, result.fileId]);
+    } catch (error) {
+      console.error('File upload failed:', error);
+      alert(`ファイルのアップロードに失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    try {
+      await apiService.deleteFile(fileId);
+      setUploadedFiles(prev => prev.filter(f => f.fileId !== fileId));
+      setSelectedFileIds(prev => prev.filter(id => id !== fileId));
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('ファイルの削除に失敗しました');
+    }
+  };
+
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFileIds(prev =>
+      prev.includes(fileId)
+        ? prev.filter(id => id !== fileId)
+        : [...prev, fileId]
+    );
   };
 
   return (
@@ -231,7 +397,8 @@ const App: React.FC = () => {
             <SidebarItem
               key={h.id}
               active={activeChatId === h.id}
-              onClick={() => setActiveChatId(h.id)}
+              onClick={() => handleSelectChat(h.id)}
+              onDelete={() => deleteChat(h.id)}
             >
               <ICONS.History />
               <span className="truncate flex-1">{h.title}</span>
@@ -239,8 +406,17 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-[#1E3D6B]/10">
-          <SidebarItem active={showSettings} onClick={() => setShowSettings(!showSettings)}>
+        <div className="mt-4 pt-4 border-t border-[#1E3D6B]/10 space-y-1">
+          <SidebarItem active={showFilesPanel} onClick={() => { setShowFilesPanel(!showFilesPanel); setShowSettings(false); }}>
+            <ICONS.Paperclip />
+            <span>ファイル管理</span>
+            {uploadedFiles.length > 0 && (
+              <span className="ml-auto text-xs bg-[#A18E66] text-white px-2 py-0.5 rounded-full">
+                {uploadedFiles.length}
+              </span>
+            )}
+          </SidebarItem>
+          <SidebarItem active={showSettings} onClick={() => { setShowSettings(!showSettings); setShowFilesPanel(false); }}>
             <ICONS.Settings />
             <span>設定 & 管理</span>
           </SidebarItem>
@@ -302,6 +478,11 @@ const App: React.FC = () => {
               </div>
               <h2 className="text-2xl font-light italic">どのようにお手伝いしましょうか？</h2>
               <p className="mt-2 text-sm">複数のAIモデル（Claude, Nova, Llama, Gemini等）に対応しています。</p>
+              {selectedFileIds.length > 0 && (
+                <p className="mt-2 text-sm text-[#A18E66]">
+                  {selectedFileIds.length}個のファイルが参照として選択されています
+                </p>
+              )}
             </div>
           ) : (
             activeChat?.messages.map((msg) => (
@@ -357,25 +538,41 @@ const App: React.FC = () => {
         {/* Input Bar */}
         <div className="p-8 pt-2">
           <div className="max-w-4xl mx-auto">
-            {/* File Previews */}
-            <div className="flex flex-wrap gap-2 mb-3">
-              {userFiles.map(file => (
-                <div key={file.name} className="flex items-center gap-2 bg-[#A18E66]/10 px-3 py-1.5 rounded-full border border-[#A18E66]/20 text-xs">
-                  <span className="truncate max-w-[120px] font-medium">{file.name}</span>
-                  <button
-                    onClick={() => removeUserFile(file.name)}
-                    className="hover:text-red-500 transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
+            {/* Selected Files Preview */}
+            {selectedFileIds.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {selectedFileIds.map(fileId => {
+                  const file = uploadedFiles.find(f => f.fileId === fileId);
+                  return file ? (
+                    <div key={fileId} className="flex items-center gap-2 bg-[#A18E66]/10 px-3 py-1.5 rounded-full border border-[#A18E66]/20 text-xs">
+                      <span className="truncate max-w-[120px] font-medium">{file.fileName}</span>
+                      <button
+                        onClick={() => toggleFileSelection(fileId)}
+                        className="hover:text-red-500 transition-colors"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            )}
 
             <div className="paper-card paper-shadow p-2 flex items-end gap-2 bg-white ring-1 ring-[#1E3D6B]/5">
-              <label className="p-3 text-[#A18E66] hover:bg-[#A18E66]/10 rounded-xl cursor-pointer transition-colors">
-                <ICONS.Paperclip />
-                <input type="file" className="hidden" onChange={handleFileUpload} />
+              <label className={`p-3 text-[#A18E66] hover:bg-[#A18E66]/10 rounded-xl cursor-pointer transition-colors ${isUploading ? 'opacity-50 cursor-wait' : ''}`}>
+                {isUploading ? (
+                  <div className="w-5 h-5 border-2 border-[#A18E66] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <ICONS.Paperclip />
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  accept=".pdf,.docx,.txt,.csv,.xlsx"
+                  disabled={isUploading}
+                />
               </label>
               <textarea
                 rows={1}
@@ -407,6 +604,117 @@ const App: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Files Panel (Overlay) */}
+        {showFilesPanel && (
+          <div className="absolute inset-0 z-50 bg-[#1E3D6B]/20 backdrop-blur-sm flex items-center justify-center p-8">
+            <div className="paper-card w-full max-w-2xl bg-white shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-8 pb-4 border-b border-[#1E3D6B]/10">
+                <h2 className="text-2xl font-bold flex items-center gap-3 text-[#1E3D6B]">
+                  <ICONS.Paperclip /> ファイル管理 (RAG)
+                </h2>
+                <button
+                  onClick={() => setShowFilesPanel(false)}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Upload Section */}
+                <section>
+                  <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
+                    ファイルアップロード
+                  </h3>
+                  <label className={`block w-full py-8 border-2 border-dashed border-[#A18E66]/30 text-[#A18E66] text-sm font-bold rounded-xl hover:bg-[#A18E66]/5 transition-colors cursor-pointer text-center ${isUploading ? 'opacity-50' : ''}`}>
+                    {isUploading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-[#A18E66] border-t-transparent rounded-full animate-spin" />
+                        アップロード中...
+                      </span>
+                    ) : (
+                      <>+ ファイルを選択 (PDF, DOCX, TXT, CSV, XLSX)</>
+                    )}
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      accept=".pdf,.docx,.txt,.csv,.xlsx"
+                      disabled={isUploading}
+                    />
+                  </label>
+                </section>
+
+                {/* Uploaded Files List */}
+                <section>
+                  <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
+                    アップロード済みファイル ({uploadedFiles.length})
+                  </h3>
+                  {uploadedFiles.length === 0 ? (
+                    <p className="text-sm opacity-50 text-center py-8">
+                      まだファイルがアップロードされていません
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {uploadedFiles.map(file => (
+                        <div
+                          key={file.fileId}
+                          className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
+                            selectedFileIds.includes(file.fileId)
+                              ? 'bg-[#A18E66]/10 border-[#A18E66]'
+                              : 'bg-[#F5F7FA] border-[#1E3D6B]/5 hover:border-[#A18E66]/50'
+                          }`}
+                          onClick={() => toggleFileSelection(file.fileId)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${
+                              selectedFileIds.includes(file.fileId)
+                                ? 'bg-[#A18E66] text-white'
+                                : 'bg-[#1E3D6B]/10 text-[#1E3D6B]'
+                            }`}>
+                              {file.fileType?.toUpperCase() || 'FILE'}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold">{file.fileName}</p>
+                              <p className="text-[10px] opacity-50">
+                                {new Date(file.uploadedAt).toLocaleString()}
+                                {file.fileSize && ` • ${(file.fileSize / 1024).toFixed(1)} KB`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {selectedFileIds.includes(file.fileId) && (
+                              <span className="text-xs text-[#A18E66] font-bold">選択中</span>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.fileId); }}
+                              className="p-2 hover:bg-red-100 rounded text-red-500 transition-colors"
+                              title="削除"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Selected Files Info */}
+                {selectedFileIds.length > 0 && (
+                  <section className="p-4 bg-[#A18E66]/10 rounded-xl">
+                    <p className="text-sm">
+                      <span className="font-bold text-[#A18E66]">{selectedFileIds.length}個のファイル</span>
+                      がチャットの参照として選択されています。
+                      これらのファイルの内容がAIの回答に反映されます。
+                    </p>
+                  </section>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Settings Modal (Overlay) */}
         {showSettings && (
@@ -478,32 +786,6 @@ const App: React.FC = () => {
                   </div>
                 </section>
 
-                {/* System Reference Files */}
-                <section>
-                  <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
-                    管理者参照ファイル (RAGソース)
-                  </h3>
-                  <div className="space-y-2">
-                    {systemFiles.map(file => (
-                      <div key={file.name} className="flex items-center justify-between p-4 bg-[#F5F7FA] rounded-xl border border-[#1E3D6B]/5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded bg-[#1E3D6B]/10 flex items-center justify-center text-[#1E3D6B]">
-                            DOC
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold">{file.name}</p>
-                            <p className="text-[10px] opacity-50">System Level Knowledge</p>
-                          </div>
-                        </div>
-                        <span className="text-xs font-mono text-[#A18E66]">{(file.size/1024).toFixed(1)} KB</span>
-                      </div>
-                    ))}
-                    <button className="w-full py-3 border-2 border-dashed border-[#A18E66]/30 text-[#A18E66] text-sm font-bold rounded-xl hover:bg-[#A18E66]/5 transition-colors">
-                      + 管理用ファイルの追加
-                    </button>
-                  </div>
-                </section>
-
                 {/* User Info */}
                 <section>
                   <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
@@ -531,8 +813,8 @@ const App: React.FC = () => {
                       <p className="text-2xl font-bold text-[#1E3D6B]">{histories.length} Sessions</p>
                     </div>
                     <div className="p-4 bg-[#F5F7FA] rounded-xl">
-                      <p className="text-[10px] opacity-50 font-bold uppercase">Files Loaded</p>
-                      <p className="text-2xl font-bold text-[#1E3D6B]">{systemFiles.length + userFiles.length}</p>
+                      <p className="text-[10px] opacity-50 font-bold uppercase">Files Uploaded</p>
+                      <p className="text-2xl font-bold text-[#1E3D6B]">{uploadedFiles.length}</p>
                     </div>
                     <div className="p-4 bg-[#F5F7FA] rounded-xl">
                       <p className="text-[10px] opacity-50 font-bold uppercase">API Status</p>
