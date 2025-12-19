@@ -15,6 +15,8 @@ Globals:
         GEMINI_API_KEY: !Ref GeminiApiKey
         FILES_BUCKET: !Ref FilesBucket
         MAIN_TABLE: !Ref MainTable
+        USER_POOL_ID: !Ref UserPool
+        USER_POOL_CLIENT_ID: !Ref UserPoolClient
 
 Parameters:
   GeminiApiKey:
@@ -30,6 +32,70 @@ Parameters:
       - prod
 
 Resources:
+  # ============================================
+  # Cognito User Pool
+  # ============================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ai-connective-users-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+        - Name: name
+          Required: true
+          Mutable: true
+        - Name: custom:role
+          AttributeDataType: String
+          Mutable: true
+        - Name: custom:organizationId
+          AttributeDataType: String
+          Mutable: true
+        - Name: custom:companyId
+          AttributeDataType: String
+          Mutable: true
+        - Name: custom:departmentId
+          AttributeDataType: String
+          Mutable: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ai-connective-client-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - http://localhost:5173
+        - https://localhost:5173
+      LogoutURLs:
+        - http://localhost:5173
+        - https://localhost:5173
+
   # ============================================
   # S3 Bucket for Files
   # ============================================
@@ -337,6 +403,88 @@ Resources:
         External:
           - '@aws-sdk/*'
 
+  # ============================================
+  # Auth Lambda Function
+  # ============================================
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-connective-auth-${Environment}
+      CodeUri: .
+      Handler: auth.handler
+      Description: Handles authentication and user management
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminUpdateUserAttributes
+                - cognito-idp:AdminDeleteUser
+                - cognito-idp:AdminGetUser
+                - cognito-idp:ListUsers
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        SignUpApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/signup
+            Method: POST
+        SignInApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/signin
+            Method: POST
+        ProfileApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/profile
+            Method: GET
+        UpdateProfileApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/profile
+            Method: PUT
+        UsersApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/users
+            Method: GET
+        CreateUserApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/users
+            Method: POST
+        AuthOptionsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/{proxy+}
+            Method: OPTIONS
+        AdminOptionsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/{proxy+}
+            Method: OPTIONS
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - src/handlers/auth.ts
+        External:
+          - '@aws-sdk/*'
+
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
@@ -359,3 +507,12 @@ Outputs:
   ConversationsFunctionArn:
     Description: Conversations Lambda Function ARN
     Value: !GetAtt ConversationsFunction.Arn
+  AuthFunctionArn:
+    Description: Auth Lambda Function ARN
+    Value: !GetAtt AuthFunction.Arn
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient

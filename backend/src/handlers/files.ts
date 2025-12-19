@@ -1,6 +1,6 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   APIGatewayEvent,
@@ -11,6 +11,9 @@ import type {
   FileQueryRequest,
   FileQueryResponse,
   FileType,
+  FileVisibility,
+  FileCategory,
+  UserRole,
 } from '../types/index.js';
 
 const s3 = new S3Client({});
@@ -35,26 +38,46 @@ function createResponse(statusCode: number, body: object): APIGatewayResponse {
   };
 }
 
-function getMimeType(fileType: FileType): string {
-  const mimeTypes: Record<FileType, string> = {
-    pdf: 'application/pdf',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    txt: 'text/plain',
-    csv: 'text/csv',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+// Check what visibility levels a user can set based on their role
+function getAllowedVisibilities(role: UserRole): FileVisibility[] {
+  const visibilityByRole: Record<UserRole, FileVisibility[]> = {
+    system_admin: ['private', 'department', 'company', 'organization', 'system'],
+    org_admin: ['private', 'department', 'company', 'organization'],
+    company_admin: ['private', 'department', 'company'],
+    user: ['private'],
   };
-  return mimeTypes[fileType] || 'application/octet-stream';
+  return visibilityByRole[role] || ['private'];
 }
 
-function getFileTypeFromMime(mimeType: string): FileType | null {
-  const typeMap: Record<string, FileType> = {
-    'application/pdf': 'pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'text/plain': 'txt',
-    'text/csv': 'csv',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-  };
-  return typeMap[mimeType] || null;
+// Check if user can access a file based on visibility
+function canAccessFile(
+  file: FileRecord,
+  userId: string,
+  userRole: UserRole,
+  userOrgId?: string,
+  userCompanyId?: string,
+  userDeptId?: string
+): boolean {
+  // Owner can always access
+  if (file.userId === userId) return true;
+
+  // System admins can access everything
+  if (userRole === 'system_admin') return true;
+
+  switch (file.visibility) {
+    case 'private':
+      return false;
+    case 'department':
+      return file.departmentId === userDeptId && file.companyId === userCompanyId;
+    case 'company':
+      return file.companyId === userCompanyId;
+    case 'organization':
+      return file.organizationId === userOrgId;
+    case 'system':
+      return true;
+    default:
+      return false;
+  }
 }
 
 // Upload file
@@ -62,7 +85,17 @@ async function uploadFile(request: FileUploadRequest): Promise<FileUploadRespons
   const fileId = uuidv4();
   const now = new Date().toISOString();
   const userId = request.userId || 'anonymous';
-  const s3Key = `${userId}/${fileId}/${request.fileName}`;
+  const userRole = request.userRole || 'user';
+  const visibility = request.visibility || 'private';
+  const category = request.category || 'chat_attachment';
+
+  // Validate visibility based on role
+  const allowedVisibilities = getAllowedVisibilities(userRole);
+  if (!allowedVisibilities.includes(visibility)) {
+    throw new Error(`Role ${userRole} cannot set visibility to ${visibility}`);
+  }
+
+  const s3Key = `${request.organizationId || 'default'}/${request.companyId || 'default'}/${userId}/${fileId}/${request.fileName}`;
 
   // Decode base64 and upload to S3
   const fileBuffer = Buffer.from(request.fileData, 'base64');
@@ -84,12 +117,32 @@ async function uploadFile(request: FileUploadRequest): Promise<FileUploadRespons
     mimeType: request.mimeType,
     s3Key,
     userId,
+    createdByRole: userRole,
+    organizationId: request.organizationId,
+    companyId: request.companyId,
+    departmentId: request.departmentId,
     uploadedAt: now,
     fileSize: fileBuffer.length,
-    status: 'ready', // For now, mark as ready immediately
+    status: 'ready',
+    visibility,
+    category,
+    description: request.description,
+    // GSI for user's files
     GSI1PK: `USER#${userId}`,
     GSI1SK: `FILE#${now}`,
   };
+
+  // Add GSI2 for visibility-based queries
+  if (visibility === 'system') {
+    fileRecord.GSI2PK = 'VISIBILITY#system';
+    fileRecord.GSI2SK = `FILE#${now}`;
+  } else if (visibility === 'organization' && request.organizationId) {
+    fileRecord.GSI2PK = `ORG#${request.organizationId}`;
+    fileRecord.GSI2SK = `FILE#${now}`;
+  } else if (visibility === 'company' && request.companyId) {
+    fileRecord.GSI2PK = `COMPANY#${request.companyId}`;
+    fileRecord.GSI2SK = `FILE#${now}`;
+  }
 
   // For text-based files, extract and store the text
   if (request.fileType === 'txt' || request.fileType === 'csv') {
@@ -109,9 +162,19 @@ async function uploadFile(request: FileUploadRequest): Promise<FileUploadRespons
   };
 }
 
-// List files for user
-async function listFiles(userId: string): Promise<FileRecord[]> {
-  const result = await ddb.send(new QueryCommand({
+// List files accessible to user
+async function listFiles(
+  userId: string,
+  userRole: UserRole,
+  organizationId?: string,
+  companyId?: string,
+  departmentId?: string,
+  category?: FileCategory
+): Promise<FileRecord[]> {
+  const allFiles: FileRecord[] = [];
+
+  // 1. Get user's own files
+  const userFilesResult = await ddb.send(new QueryCommand({
     TableName: TABLE_NAME,
     IndexName: 'GSI1',
     KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
@@ -119,13 +182,67 @@ async function listFiles(userId: string): Promise<FileRecord[]> {
       ':pk': `USER#${userId}`,
       ':sk': 'FILE#',
     },
-    ScanIndexForward: false, // Most recent first
+    ScanIndexForward: false,
   }));
+  allFiles.push(...(userFilesResult.Items || []) as FileRecord[]);
 
-  return (result.Items || []) as FileRecord[];
+  // 2. Get system-wide files
+  const systemFilesResult = await ddb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    IndexName: 'GSI2',
+    KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+    ExpressionAttributeValues: {
+      ':pk': 'VISIBILITY#system',
+      ':sk': 'FILE#',
+    },
+    ScanIndexForward: false,
+  }));
+  allFiles.push(...(systemFilesResult.Items || []) as FileRecord[]);
+
+  // 3. Get organization files (if user belongs to an organization)
+  if (organizationId) {
+    const orgFilesResult = await ddb.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: 'GSI2',
+      KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ORG#${organizationId}`,
+        ':sk': 'FILE#',
+      },
+      ScanIndexForward: false,
+    }));
+    allFiles.push(...(orgFilesResult.Items || []) as FileRecord[]);
+  }
+
+  // 4. Get company files (if user belongs to a company)
+  if (companyId) {
+    const companyFilesResult = await ddb.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: 'GSI2',
+      KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `COMPANY#${companyId}`,
+        ':sk': 'FILE#',
+      },
+      ScanIndexForward: false,
+    }));
+    allFiles.push(...(companyFilesResult.Items || []) as FileRecord[]);
+  }
+
+  // Deduplicate by fileId
+  const uniqueFiles = Array.from(
+    new Map(allFiles.map(f => [f.fileId, f])).values()
+  );
+
+  // Filter by access permission and category
+  return uniqueFiles.filter(file => {
+    const hasAccess = canAccessFile(file, userId, userRole, organizationId, companyId, departmentId);
+    const matchesCategory = !category || file.category === category;
+    return hasAccess && matchesCategory;
+  });
 }
 
-// Get single file
+// Get single file (with access check)
 async function getFile(fileId: string): Promise<FileRecord | null> {
   const result = await ddb.send(new GetCommand({
     TableName: TABLE_NAME,
@@ -138,12 +255,58 @@ async function getFile(fileId: string): Promise<FileRecord | null> {
   return (result.Item as FileRecord) || null;
 }
 
-// Delete file
-async function deleteFile(fileId: string): Promise<void> {
-  // Get file record first
+// Update file visibility
+async function updateFileVisibility(
+  fileId: string,
+  userId: string,
+  userRole: UserRole,
+  newVisibility: FileVisibility
+): Promise<void> {
   const file = await getFile(fileId);
   if (!file) {
     throw new Error('File not found');
+  }
+
+  // Only owner or admin can update
+  if (file.userId !== userId && userRole !== 'system_admin') {
+    throw new Error('Permission denied');
+  }
+
+  // Validate new visibility
+  const allowedVisibilities = getAllowedVisibilities(userRole);
+  if (!allowedVisibilities.includes(newVisibility)) {
+    throw new Error(`Role ${userRole} cannot set visibility to ${newVisibility}`);
+  }
+
+  const now = new Date().toISOString();
+
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: {
+      PK: `FILE#${fileId}`,
+      SK: 'META',
+    },
+    UpdateExpression: 'SET visibility = :visibility, GSI2PK = :gsi2pk, GSI2SK = :gsi2sk',
+    ExpressionAttributeValues: {
+      ':visibility': newVisibility,
+      ':gsi2pk': newVisibility === 'system' ? 'VISIBILITY#system' :
+                 newVisibility === 'organization' ? `ORG#${file.organizationId}` :
+                 newVisibility === 'company' ? `COMPANY#${file.companyId}` : null,
+      ':gsi2sk': `FILE#${now}`,
+    },
+  }));
+}
+
+// Delete file
+async function deleteFile(fileId: string, userId: string, userRole: UserRole): Promise<void> {
+  const file = await getFile(fileId);
+  if (!file) {
+    throw new Error('File not found');
+  }
+
+  // Only owner or admin can delete
+  if (file.userId !== userId && userRole !== 'system_admin') {
+    throw new Error('Permission denied');
   }
 
   // Delete from S3
@@ -171,11 +334,9 @@ async function queryFile(fileId: string, request: FileQueryRequest): Promise<Fil
 
   let fileContent = '';
 
-  // Get content from extractedText or S3
   if (file.extractedText) {
     fileContent = file.extractedText;
   } else {
-    // Fetch from S3
     const s3Response = await s3.send(new GetObjectCommand({
       Bucket: BUCKET_NAME,
       Key: file.s3Key,
@@ -190,7 +351,6 @@ async function queryFile(fileId: string, request: FileQueryRequest): Promise<Fil
     }
   }
 
-  // For CSV files, provide summary info
   if (file.fileType === 'csv') {
     const lines = fileContent.split('\n').filter(line => line.trim());
     const headers = lines[0]?.split(',').map(h => h.trim()) || [];
@@ -206,7 +366,6 @@ async function queryFile(fileId: string, request: FileQueryRequest): Promise<Fil
     };
   }
 
-  // For text files, return content summary
   return {
     answer: `ファイル「${file.fileName}」の内容を取得しました。チャットで質問してください。`,
     sourceData: fileContent.substring(0, 1000),
@@ -215,7 +374,6 @@ async function queryFile(fileId: string, request: FileQueryRequest): Promise<Fil
 
 // Main handler
 export async function handler(event: APIGatewayEvent): Promise<APIGatewayResponse> {
-  // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return createResponse(200, {});
   }
@@ -242,8 +400,20 @@ export async function handler(event: APIGatewayEvent): Promise<APIGatewayRespons
 
     // GET /files
     if (method === 'GET' && path === '/files') {
-      const userId = event.queryStringParameters?.userId || 'anonymous';
-      const files = await listFiles(userId);
+      const params = event.queryStringParameters || {};
+      const userId = params.userId || 'anonymous';
+      const userRole = (params.userRole as UserRole) || 'user';
+      const category = params.category as FileCategory | undefined;
+
+      const files = await listFiles(
+        userId,
+        userRole,
+        params.organizationId,
+        params.companyId,
+        params.departmentId,
+        category
+      );
+
       return createResponse(200, { files });
     }
 
@@ -257,10 +427,35 @@ export async function handler(event: APIGatewayEvent): Promise<APIGatewayRespons
       return createResponse(200, { file });
     }
 
+    // PUT /files/{fileId} - Update visibility
+    if (method === 'PUT' && path.startsWith('/files/') && !path.includes('/query')) {
+      const fileId = path.split('/')[2];
+      if (!event.body) {
+        return createResponse(400, { error: 'Request body is required' });
+      }
+
+      const body = JSON.parse(event.body);
+      await updateFileVisibility(
+        fileId,
+        body.userId || 'anonymous',
+        body.userRole || 'user',
+        body.visibility
+      );
+
+      return createResponse(200, { message: 'File updated' });
+    }
+
     // DELETE /files/{fileId}
     if (method === 'DELETE' && path.startsWith('/files/')) {
       const fileId = path.split('/')[2];
-      await deleteFile(fileId);
+      const params = event.queryStringParameters || {};
+
+      await deleteFile(
+        fileId,
+        params.userId || 'anonymous',
+        (params.userRole as UserRole) || 'user'
+      );
+
       return createResponse(200, { message: 'File deleted' });
     }
 
