@@ -60,13 +60,13 @@ Resources:
         - Name: custom:role
           AttributeDataType: String
           Mutable: true
-        - Name: custom:organizationId
+        - Name: custom:orgId
           AttributeDataType: String
           Mutable: true
-        - Name: custom:companyId
+        - Name: custom:compId
           AttributeDataType: String
           Mutable: true
-        - Name: custom:departmentId
+        - Name: custom:deptId
           AttributeDataType: String
           Mutable: true
 
