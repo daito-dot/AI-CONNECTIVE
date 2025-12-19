@@ -221,8 +221,70 @@ export interface ChatResponse {
   content: string;
   model: AIModel;
   provider: AIProvider;
+  conversationId?: string;
   usage?: {
     inputTokens: number;
     outputTokens: number;
   };
+}
+
+// Extended chat request with conversation support
+export interface ExtendedChatRequest extends ChatRequest {
+  conversationId?: string;
+  userId?: string;
+  fileIds?: string[];
+  saveHistory?: boolean;
+}
+
+// File upload types
+export type FileType = 'pdf' | 'docx' | 'txt' | 'csv' | 'xlsx';
+export type FileStatus = 'uploading' | 'processing' | 'ready' | 'error';
+
+export interface UploadedFile {
+  fileId: string;
+  fileName: string;
+  fileType: FileType;
+  status: FileStatus;
+  uploadedAt: string;
+  fileSize?: number;
+}
+
+export interface FileUploadRequest {
+  fileName: string;
+  fileType: FileType;
+  mimeType: string;
+  fileData: string;  // base64 encoded
+  userId?: string;
+}
+
+export interface FileUploadResponse {
+  fileId: string;
+  fileName: string;
+  status: FileStatus;
+  uploadedAt: string;
+}
+
+// Conversation types for backend persistence
+export interface SavedConversation {
+  conversationId: string;
+  title: string;
+  userId: string;
+  modelId: AIModel;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+}
+
+export interface SavedMessage {
+  messageId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  modelId?: AIModel;
+  inputTokens?: number;
+  outputTokens?: number;
+  cost?: number;
+  createdAt: string;
 }
