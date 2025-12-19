@@ -114,6 +114,34 @@ async function signUp(body: {
   }
 }
 
+// Confirm sign up with verification code
+async function confirmSignUp(body: {
+  email: string;
+  code: string;
+}): Promise<APIGatewayResponse> {
+  const { email, code } = body;
+
+  if (!email || !code) {
+    return createResponse(400, { error: 'email and code are required' });
+  }
+
+  try {
+    await cognitoClient.send(new ConfirmSignUpCommand({
+      ClientId: CLIENT_ID,
+      Username: email,
+      ConfirmationCode: code,
+    }));
+
+    return createResponse(200, {
+      message: 'Email verified successfully. You can now sign in.',
+    });
+  } catch (error) {
+    console.error('Confirm sign up error:', error);
+    const message = error instanceof Error ? error.message : 'Verification failed';
+    return createResponse(400, { error: message });
+  }
+}
+
 // Sign in
 async function signIn(body: {
   email: string;
@@ -435,6 +463,11 @@ export async function handler(event: APIGatewayEvent): Promise<APIGatewayRespons
     if (method === 'POST' && path === '/auth/signin') {
       const body = JSON.parse(event.body || '{}');
       return signIn(body);
+    }
+
+    if (method === 'POST' && path === '/auth/confirm') {
+      const body = JSON.parse(event.body || '{}');
+      return confirmSignUp(body);
     }
 
     // Protected routes (auth required)

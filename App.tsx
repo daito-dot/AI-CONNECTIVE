@@ -58,18 +58,24 @@ const GROUPED_MODELS = {
 const LoginModal: React.FC<{
   onLogin: (email: string, password: string) => Promise<void>;
   onSignUp: (email: string, password: string, name: string) => Promise<void>;
+  onConfirm: (email: string, code: string) => Promise<void>;
   error: string | null;
+  successMessage: string | null;
   isLoading: boolean;
-}> = ({ onLogin, onSignUp, error, isLoading }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+}> = ({ onLogin, onSignUp, onConfirm, error, successMessage, isLoading }) => {
+  const [mode, setMode] = useState<'login' | 'signup' | 'confirm'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSignUp) {
+    if (mode === 'confirm') {
+      await onConfirm(email, code);
+    } else if (mode === 'signup') {
       await onSignUp(email, password, name);
+      setMode('confirm'); // Switch to confirmation mode after signup
     } else {
       await onLogin(email, password);
     }
@@ -84,7 +90,7 @@ const LoginModal: React.FC<{
           </div>
           <h1 className="text-2xl font-bold text-[#1E3D6B]">AI Connective</h1>
           <p className="text-sm text-[#1E3D6B]/60 mt-1">
-            {isSignUp ? '新規アカウント作成' : 'ログイン'}
+            {mode === 'confirm' ? 'メール確認' : mode === 'signup' ? '新規アカウント作成' : 'ログイン'}
           </p>
         </div>
 
@@ -94,46 +100,83 @@ const LoginModal: React.FC<{
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 text-sm rounded-lg">
+            {successMessage}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignUp && (
-            <div>
-              <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">名前</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
-                placeholder="山田 太郎"
-                required
-              />
-            </div>
+          {mode === 'confirm' ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">メールアドレス</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+                  placeholder="email@example.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">確認コード</label>
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none text-center text-2xl tracking-widest"
+                  placeholder="123456"
+                  required
+                  maxLength={6}
+                />
+                <p className="text-xs text-[#1E3D6B]/50 mt-1">メールに送信された6桁のコードを入力してください</p>
+              </div>
+            </>
+          ) : (
+            <>
+              {mode === 'signup' && (
+                <div>
+                  <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">名前</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+                    placeholder="山田 太郎"
+                    required
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">メールアドレス</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+                  placeholder="email@example.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">パスワード</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                />
+                {mode === 'signup' && (
+                  <p className="text-xs text-[#1E3D6B]/50 mt-1">8文字以上、大文字・小文字・数字を含む</p>
+                )}
+              </div>
+            </>
           )}
-          <div>
-            <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">メールアドレス</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
-              placeholder="email@example.com"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">パスワード</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
-              placeholder="••••••••"
-              required
-              minLength={8}
-            />
-            {isSignUp && (
-              <p className="text-xs text-[#1E3D6B]/50 mt-1">8文字以上、大文字・小文字・数字を含む</p>
-            )}
-          </div>
           <button
             type="submit"
             disabled={isLoading}
@@ -145,18 +188,37 @@ const LoginModal: React.FC<{
                 処理中...
               </>
             ) : (
-              isSignUp ? 'アカウント作成' : 'ログイン'
+              mode === 'confirm' ? '確認' : mode === 'signup' ? 'アカウント作成' : 'ログイン'
             )}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => { setIsSignUp(!isSignUp); }}
-            className="text-sm text-[#A18E66] hover:underline"
-          >
-            {isSignUp ? 'すでにアカウントをお持ちですか？ログイン' : 'アカウントを作成'}
-          </button>
+        <div className="mt-6 text-center space-y-2">
+          {mode === 'confirm' ? (
+            <button
+              onClick={() => setMode('login')}
+              className="text-sm text-[#A18E66] hover:underline"
+            >
+              ログイン画面に戻る
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
+                className="text-sm text-[#A18E66] hover:underline"
+              >
+                {mode === 'signup' ? 'すでにアカウントをお持ちですか？ログイン' : 'アカウントを作成'}
+              </button>
+              <div>
+                <button
+                  onClick={() => setMode('confirm')}
+                  className="text-xs text-[#1E3D6B]/50 hover:underline"
+                >
+                  確認コードを入力する
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -199,6 +261,7 @@ const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>(loadAuthState);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
   const [activeModel, setActiveModel] = useState<AIModel>(DEFAULT_MODEL);
@@ -234,6 +297,7 @@ const App: React.FC = () => {
   const handleLogin = async (email: string, password: string) => {
     setAuthLoading(true);
     setAuthError(null);
+    setAuthSuccess(null);
     try {
       const result = await apiService.signIn(email, password);
       const user: User = {
@@ -260,12 +324,26 @@ const App: React.FC = () => {
   const handleSignUp = async (email: string, password: string, name: string) => {
     setAuthLoading(true);
     setAuthError(null);
+    setAuthSuccess(null);
     try {
       await apiService.signUp(email, password, name);
-      // After signup, try to login
-      setAuthError('アカウントを作成しました。ログインしてください。');
+      setAuthSuccess('確認コードをメールに送信しました。コードを入力してください。');
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'アカウント作成に失敗しました');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleConfirm = async (email: string, code: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    try {
+      await apiService.confirmSignUp(email, code);
+      setAuthSuccess('メールアドレスが確認されました。ログインしてください。');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : '確認に失敗しました');
     } finally {
       setAuthLoading(false);
     }
@@ -1080,7 +1158,9 @@ const App: React.FC = () => {
           <LoginModal
             onLogin={handleLogin}
             onSignUp={handleSignUp}
+            onConfirm={handleConfirm}
             error={authError}
+            successMessage={authSuccess}
             isLoading={authLoading}
           />
         )}
