@@ -44,7 +44,7 @@ Resources:
     Properties:
       FunctionName: !Sub ai-connective-chat-${Environment}
       CodeUri: .
-      Handler: handlers/chat.handler
+      Handler: chat.handler
       Description: Handles chat requests to multiple AI models
       Policies:
         - Statement:
@@ -85,7 +85,7 @@ Resources:
     Properties:
       FunctionName: !Sub ai-connective-models-${Environment}
       CodeUri: .
-      Handler: handlers/chat.modelsHandler
+      Handler: chat.modelsHandler
       Description: Returns available AI models
       Events:
         ModelsApi:
