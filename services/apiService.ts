@@ -9,6 +9,7 @@ import {
   FileUploadResponse,
   UploadedFile,
   FileType,
+  FileVisibility,
   SavedConversation,
   SavedMessage,
   getModelInfo,
@@ -123,7 +124,16 @@ ${fileContext}
   // File Methods
   // ============================================
 
-  async uploadFile(file: File): Promise<FileUploadResponse> {
+  async uploadFile(
+    file: File,
+    options?: {
+      visibility?: FileVisibility;
+      userRole?: UserRole;
+      organizationId?: string;
+      companyId?: string;
+      departmentId?: string;
+    }
+  ): Promise<FileUploadResponse> {
     const fileType = getFileTypeFromMime(file.type);
     if (!fileType) {
       throw new Error(`Unsupported file type: ${file.type}`);
@@ -148,6 +158,11 @@ ${fileContext}
       mimeType: file.type,
       fileData: base64Data,
       userId: this.userId,
+      userRole: options?.userRole,
+      visibility: options?.visibility || 'private',
+      organizationId: options?.organizationId,
+      companyId: options?.companyId,
+      departmentId: options?.departmentId,
     };
 
     const response = await fetch(`${this.endpoint}/files/upload`, {
@@ -166,9 +181,44 @@ ${fileContext}
     return response.json();
   }
 
-  async listFiles(): Promise<UploadedFile[]> {
+  async updateFileVisibility(
+    fileId: string,
+    visibility: FileVisibility,
+    userRole: UserRole
+  ): Promise<void> {
+    const response = await fetch(`${this.endpoint}/files/${fileId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: this.userId,
+        userRole,
+        visibility,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update file visibility');
+    }
+  }
+
+  async listFiles(options?: {
+    userRole?: UserRole;
+    organizationId?: string;
+    companyId?: string;
+    departmentId?: string;
+  }): Promise<UploadedFile[]> {
+    const params = new URLSearchParams();
+    params.append('userId', this.userId);
+    if (options?.userRole) params.append('userRole', options.userRole);
+    if (options?.organizationId) params.append('organizationId', options.organizationId);
+    if (options?.companyId) params.append('companyId', options.companyId);
+    if (options?.departmentId) params.append('departmentId', options.departmentId);
+
     const response = await fetch(
-      `${this.endpoint}/files?userId=${encodeURIComponent(this.userId)}`,
+      `${this.endpoint}/files?${params}`,
       {
         method: 'GET',
       }
@@ -182,8 +232,12 @@ ${fileContext}
     return data.files || [];
   }
 
-  async deleteFile(fileId: string): Promise<void> {
-    const response = await fetch(`${this.endpoint}/files/${fileId}`, {
+  async deleteFile(fileId: string, userRole?: UserRole): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('userId', this.userId);
+    if (userRole) params.append('userRole', userRole);
+
+    const response = await fetch(`${this.endpoint}/files/${fileId}?${params}`, {
       method: 'DELETE',
     });
 
