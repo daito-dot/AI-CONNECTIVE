@@ -16,12 +16,34 @@ import {
 import { COLORS, ICONS } from './constants';
 import { apiService } from './services/apiService';
 
-// --- Mock Data ---
-const DEFAULT_USER: User = {
-  id: 'u1',
-  name: 'Sample User',
-  role: 'admin',
-  avatar: 'https://picsum.photos/seed/user1/100/100'
+// --- Auth Types ---
+interface AuthState {
+  isAuthenticated: boolean;
+  user: User | null;
+  accessToken: string | null;
+}
+
+// --- Storage Keys ---
+const STORAGE_KEYS = {
+  AUTH: 'ai-connective-auth',
+};
+
+// Load auth state from localStorage
+const loadAuthState = (): AuthState => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.AUTH);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load auth state:', e);
+  }
+  return { isAuthenticated: false, user: null, accessToken: null };
+};
+
+// Save auth state to localStorage
+const saveAuthState = (state: AuthState) => {
+  localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(state));
 };
 
 // Group models by provider for UI
@@ -30,6 +52,115 @@ const GROUPED_MODELS = {
   'Amazon Nova': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('amazon.nova')),
   'Meta Llama': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('meta.llama')),
   'Google Gemini': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('gemini')),
+};
+
+// --- Login Modal Component ---
+const LoginModal: React.FC<{
+  onLogin: (email: string, password: string) => Promise<void>;
+  onSignUp: (email: string, password: string, name: string) => Promise<void>;
+  error: string | null;
+  isLoading: boolean;
+}> = ({ onLogin, onSignUp, error, isLoading }) => {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSignUp) {
+      await onSignUp(email, password, name);
+    } else {
+      await onLogin(email, password);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#1E3D6B]/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="paper-card w-full max-w-md bg-white shadow-2xl p-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#1E3D6B] flex items-center justify-center text-[#A18E66]">
+            <ICONS.Admin />
+          </div>
+          <h1 className="text-2xl font-bold text-[#1E3D6B]">AI Connective</h1>
+          <p className="text-sm text-[#1E3D6B]/60 mt-1">
+            {isSignUp ? '新規アカウント作成' : 'ログイン'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignUp && (
+            <div>
+              <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">名前</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+                placeholder="山田 太郎"
+                required
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">メールアドレス</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+              placeholder="email@example.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#1E3D6B]/70 mb-1">パスワード</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border border-[#1E3D6B]/20 rounded-lg focus:ring-2 focus:ring-[#A18E66] focus:border-transparent outline-none"
+              placeholder="••••••••"
+              required
+              minLength={8}
+            />
+            {isSignUp && (
+              <p className="text-xs text-[#1E3D6B]/50 mt-1">8文字以上、大文字・小文字・数字を含む</p>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-3 bg-[#1E3D6B] text-white font-bold rounded-lg hover:bg-[#1E3D6B]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                処理中...
+              </>
+            ) : (
+              isSignUp ? 'アカウント作成' : 'ログイン'
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => { setIsSignUp(!isSignUp); }}
+            className="text-sm text-[#A18E66] hover:underline"
+          >
+            {isSignUp ? 'すでにアカウントをお持ちですか？ログイン' : 'アカウントを作成'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // --- Components ---
@@ -64,7 +195,12 @@ const SidebarItem: React.FC<{
 );
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User>(DEFAULT_USER);
+  // Auth state
+  const [authState, setAuthState] = useState<AuthState>(loadAuthState);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [activeModel, setActiveModel] = useState<AIModel>(DEFAULT_MODEL);
   const [histories, setHistories] = useState<ChatHistory[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -84,10 +220,69 @@ const App: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Current user from auth state
+  const currentUser: User | null = authState.user;
+
   // Set user ID in apiService
   useEffect(() => {
-    apiService.setUserId(currentUser.id);
-  }, [currentUser.id]);
+    if (currentUser?.id) {
+      apiService.setUserId(currentUser.id);
+    }
+  }, [currentUser?.id]);
+
+  // Auth handlers
+  const handleLogin = async (email: string, password: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const result = await apiService.signIn(email, password);
+      const user: User = {
+        id: result.user?.userId || email,
+        name: result.user?.name || email.split('@')[0],
+        role: (result.user?.role as 'admin' | 'user') || 'user',
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(result.user?.name || email)}`,
+      };
+      const newAuthState: AuthState = {
+        isAuthenticated: true,
+        user,
+        accessToken: result.accessToken,
+      };
+      setAuthState(newAuthState);
+      saveAuthState(newAuthState);
+      setShowLoginModal(false);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'ログインに失敗しました');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignUp = async (email: string, password: string, name: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      await apiService.signUp(email, password, name);
+      // After signup, try to login
+      setAuthError('アカウントを作成しました。ログインしてください。');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'アカウント作成に失敗しました');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    const newAuthState: AuthState = {
+      isAuthenticated: false,
+      user: null,
+      accessToken: null,
+    };
+    setAuthState(newAuthState);
+    saveAuthState(newAuthState);
+    setHistories([]);
+    setUploadedFiles([]);
+    setActiveChatId(null);
+  };
 
   // Check API status and load data on mount
   useEffect(() => {
@@ -95,7 +290,8 @@ const App: React.FC = () => {
       const isOnline = await apiService.checkHealth();
       setApiStatus(isOnline ? 'online' : 'offline');
 
-      if (isOnline) {
+      // Only load user data if authenticated
+      if (isOnline && authState.isAuthenticated && currentUser) {
         // Load uploaded files from backend
         try {
           const files = await apiService.listFiles();
@@ -115,21 +311,20 @@ const App: React.FC = () => {
               updatedAt: new Date(conv.updatedAt).getTime(),
             }));
             setHistories(chatHistories);
-            // Don't auto-select, let user choose or create new
           }
         } catch (error) {
           console.error('Failed to load conversations:', error);
         }
       }
 
-      // Create initial chat if none exist
-      if (histories.length === 0) {
+      // Create initial chat if authenticated and none exist
+      if (authState.isAuthenticated && histories.length === 0) {
         createNewChat();
       }
     };
 
     initializeApp();
-  }, []);
+  }, [authState.isAuthenticated]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -461,17 +656,48 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-bold">{currentUser.name}</p>
-              <p className="text-xs opacity-50 capitalize">{currentUser.role}</p>
-            </div>
-            <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full border-2 border-[#A18E66]" />
+            {authState.isAuthenticated && currentUser ? (
+              <>
+                <div className="text-right">
+                  <p className="text-sm font-bold">{currentUser.name}</p>
+                  <p className="text-xs opacity-50 capitalize">{currentUser.role}</p>
+                </div>
+                <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full border-2 border-[#A18E66]" />
+                <button
+                  onClick={handleLogout}
+                  className="ml-2 px-3 py-1.5 text-xs font-medium text-[#1E3D6B]/70 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  ログアウト
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-4 py-2 bg-[#1E3D6B] text-white font-medium rounded-lg hover:bg-[#1E3D6B]/90 transition-colors"
+              >
+                ログイン
+              </button>
+            )}
           </div>
         </header>
 
         {/* Chat Content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-          {activeChat?.messages.length === 0 ? (
+          {!authState.isAuthenticated ? (
+            <div className="h-full flex flex-col items-center justify-center">
+              <div className="w-24 h-24 mb-6 rounded-3xl bg-[#1E3D6B]/10 flex items-center justify-center text-[#1E3D6B]">
+                <ICONS.Admin />
+              </div>
+              <h2 className="text-2xl font-bold text-[#1E3D6B]">AI Connectiveへようこそ</h2>
+              <p className="mt-2 text-sm text-[#1E3D6B]/60">ログインしてチャットを開始してください</p>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="mt-6 px-6 py-3 bg-[#1E3D6B] text-white font-bold rounded-xl hover:bg-[#1E3D6B]/90 transition-colors shadow-lg"
+              >
+                ログイン / アカウント作成
+              </button>
+            </div>
+          ) : activeChat?.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-40">
               <div className="w-24 h-24 mb-6 rounded-3xl bg-[#A18E66]/20 flex items-center justify-center text-[#1E3D6B]">
                 <ICONS.History />
@@ -584,14 +810,15 @@ const App: React.FC = () => {
                     handleSendMessage();
                   }
                 }}
-                placeholder="メッセージを入力..."
-                className="flex-1 bg-transparent border-none focus:ring-0 px-2 py-3 resize-none custom-scrollbar max-h-48 text-[#1E3D6B] placeholder-[#1E3D6B]/30"
+                placeholder={authState.isAuthenticated ? "メッセージを入力..." : "ログインしてください"}
+                disabled={!authState.isAuthenticated}
+                className="flex-1 bg-transparent border-none focus:ring-0 px-2 py-3 resize-none custom-scrollbar max-h-48 text-[#1E3D6B] placeholder-[#1E3D6B]/30 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleSendMessage}
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || !input.trim() || !authState.isAuthenticated}
                 className={`p-3 rounded-xl transition-all duration-300 ${
-                  input.trim()
+                  input.trim() && authState.isAuthenticated
                     ? 'bg-[#1E3D6B] text-white shadow-lg shadow-[#1E3D6B]/20 hover:-translate-y-0.5'
                     : 'bg-gray-100 text-gray-300 cursor-not-allowed'
                 }`}
@@ -791,16 +1018,31 @@ const App: React.FC = () => {
                   <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
                     ユーザープロファイル
                   </h3>
-                  <div className="flex items-center gap-6 p-6 bg-[#1E3D6B] text-white rounded-2xl">
-                    <img src={currentUser.avatar} className="w-20 h-20 rounded-full border-4 border-[#A18E66]" />
-                    <div>
-                      <h4 className="text-xl font-bold">{currentUser.name}</h4>
-                      <p className="opacity-70 text-sm">権限レベル: <span className="text-[#A18E66] font-bold uppercase">{currentUser.role}</span></p>
-                      <button className="mt-4 text-xs font-bold py-2 px-4 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
-                        プロファイルを編集
+                  {currentUser ? (
+                    <div className="flex items-center gap-6 p-6 bg-[#1E3D6B] text-white rounded-2xl">
+                      <img src={currentUser.avatar} className="w-20 h-20 rounded-full border-4 border-[#A18E66]" />
+                      <div>
+                        <h4 className="text-xl font-bold">{currentUser.name}</h4>
+                        <p className="opacity-70 text-sm">権限レベル: <span className="text-[#A18E66] font-bold uppercase">{currentUser.role}</span></p>
+                        <button
+                          onClick={handleLogout}
+                          className="mt-4 text-xs font-bold py-2 px-4 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors"
+                        >
+                          ログアウト
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 bg-gray-100 rounded-2xl text-center">
+                      <p className="text-sm opacity-70 mb-4">ログインしていません</p>
+                      <button
+                        onClick={() => { setShowSettings(false); setShowLoginModal(true); }}
+                        className="px-4 py-2 bg-[#1E3D6B] text-white font-medium rounded-lg hover:bg-[#1E3D6B]/90 transition-colors"
+                      >
+                        ログイン
                       </button>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 <section>
@@ -831,6 +1073,16 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Login Modal */}
+        {showLoginModal && (
+          <LoginModal
+            onLogin={handleLogin}
+            onSignUp={handleSignUp}
+            error={authError}
+            isLoading={authLoading}
+          />
         )}
       </main>
     </div>
