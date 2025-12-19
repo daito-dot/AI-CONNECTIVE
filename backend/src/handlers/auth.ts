@@ -69,7 +69,7 @@ async function signUp(body: {
   }
 
   try {
-    // Sign up in Cognito
+    // Sign up in Cognito (custom attributes cannot be set during client signup)
     const signUpResult = await cognitoClient.send(new SignUpCommand({
       ClientId: CLIENT_ID,
       Username: email,
@@ -77,7 +77,6 @@ async function signUp(body: {
       UserAttributes: [
         { Name: 'email', Value: email },
         { Name: 'name', Value: name },
-        { Name: 'custom:role', Value: 'user' },
       ],
     }));
 
