@@ -5,18 +5,18 @@ export type AIProvider = 'bedrock' | 'gemini';
 export type BedrockModel =
   // Anthropic Claude
   | 'anthropic.claude-opus-4-5-20251101-v1:0'
-  | 'anthropic.claude-sonnet-4-5-20250918-v1:0'
-  | 'anthropic.claude-haiku-4-5-20251022-v1:0'
+  | 'anthropic.claude-sonnet-4-5-20250929-v1:0'
+  | 'anthropic.claude-haiku-4-5-20251001-v1:0'
   // Amazon Nova
-  | 'amazon.nova-pro-v2:0'
-  | 'amazon.nova-lite-v2:0'
+  | 'amazon.nova-pro-v1:0'
+  | 'amazon.nova-lite-v1:0'
   // Meta Llama
   | 'meta.llama4-scout-17b-instruct-v1:0'
   | 'meta.llama3-3-70b-instruct-v1:0'
   // Mistral
-  | 'mistral.mistral-large-2-2411-v1:0'
+  | 'mistral.mistral-large-2407-v1:0'
   // DeepSeek
-  | 'deepseek.deepseek-r1-v1:0';
+  | 'deepseek.r1-v1:0';
 
 // Gemini Models
 export type GeminiModel =

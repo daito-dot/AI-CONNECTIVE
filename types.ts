@@ -5,18 +5,18 @@ export type AIProvider = 'bedrock' | 'gemini';
 export type BedrockModel =
   // Anthropic Claude
   | 'anthropic.claude-opus-4-5-20251101-v1:0'
-  | 'anthropic.claude-sonnet-4-5-20250918-v1:0'
-  | 'anthropic.claude-haiku-4-5-20251022-v1:0'
+  | 'anthropic.claude-sonnet-4-5-20250929-v1:0'
+  | 'anthropic.claude-haiku-4-5-20251001-v1:0'
   // Amazon Nova
-  | 'amazon.nova-pro-v2:0'
-  | 'amazon.nova-lite-v2:0'
+  | 'amazon.nova-pro-v1:0'
+  | 'amazon.nova-lite-v1:0'
   // Meta Llama
   | 'meta.llama4-scout-17b-instruct-v1:0'
   | 'meta.llama3-3-70b-instruct-v1:0'
   // Mistral
-  | 'mistral.mistral-large-2-2411-v1:0'
+  | 'mistral.mistral-large-2407-v1:0'
   // DeepSeek
-  | 'deepseek.deepseek-r1-v1:0';
+  | 'deepseek.r1-v1:0';
 
 // Gemini Models
 export type GeminiModel =
@@ -56,8 +56,8 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     maxTokens: 4096,
     pricing: { input: 15, output: 75 },
   },
-  'anthropic.claude-sonnet-4-5-20250918-v1:0': {
-    id: 'anthropic.claude-sonnet-4-5-20250918-v1:0',
+  'anthropic.claude-sonnet-4-5-20250929-v1:0': {
+    id: 'anthropic.claude-sonnet-4-5-20250929-v1:0',
     provider: 'bedrock',
     name: 'Claude Sonnet 4.5',
     description: 'バランス型・高速',
@@ -66,8 +66,8 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
     maxTokens: 4096,
     pricing: { input: 3, output: 15 },
   },
-  'anthropic.claude-haiku-4-5-20251022-v1:0': {
-    id: 'anthropic.claude-haiku-4-5-20251022-v1:0',
+  'anthropic.claude-haiku-4-5-20251001-v1:0': {
+    id: 'anthropic.claude-haiku-4-5-20251001-v1:0',
     provider: 'bedrock',
     name: 'Claude Haiku 4.5',
     description: '最速・低コスト',
@@ -78,20 +78,20 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
   },
 
   // Amazon Nova (Bedrock)
-  'amazon.nova-pro-v2:0': {
-    id: 'amazon.nova-pro-v2:0',
+  'amazon.nova-pro-v1:0': {
+    id: 'amazon.nova-pro-v1:0',
     provider: 'bedrock',
-    name: 'Nova 2 Pro',
-    description: 'AWS最高知能・マルチモーダル',
+    name: 'Nova Pro',
+    description: 'AWS高性能・マルチモーダル',
     category: 'reasoning',
     supportsImages: true,
     maxTokens: 5000,
     pricing: { input: 0.8, output: 3.2 },
   },
-  'amazon.nova-lite-v2:0': {
-    id: 'amazon.nova-lite-v2:0',
+  'amazon.nova-lite-v1:0': {
+    id: 'amazon.nova-lite-v1:0',
     provider: 'bedrock',
-    name: 'Nova 2 Lite',
+    name: 'Nova Lite',
     description: '高速・コスパ最強',
     category: 'fast',
     supportsImages: true,
@@ -122,8 +122,8 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
   },
 
   // Mistral (Bedrock)
-  'mistral.mistral-large-2-2411-v1:0': {
-    id: 'mistral.mistral-large-2-2411-v1:0',
+  'mistral.mistral-large-2407-v1:0': {
+    id: 'mistral.mistral-large-2407-v1:0',
     provider: 'bedrock',
     name: 'Mistral Large 2',
     description: '欧州製・高性能',
@@ -134,8 +134,8 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
   },
 
   // DeepSeek (Bedrock)
-  'deepseek.deepseek-r1-v1:0': {
-    id: 'deepseek.deepseek-r1-v1:0',
+  'deepseek.r1-v1:0': {
+    id: 'deepseek.r1-v1:0',
     provider: 'bedrock',
     name: 'DeepSeek R1',
     description: '推論特化・コード強い',
@@ -186,7 +186,7 @@ export function getModelsByCategory(category: ModelInfo['category']): ModelInfo[
 }
 
 // Default model
-export const DEFAULT_MODEL: AIModel = 'anthropic.claude-sonnet-4-5-20250918-v1:0';
+export const DEFAULT_MODEL: AIModel = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
 
 // Usage information for tracking costs
 export interface UsageInfo {
