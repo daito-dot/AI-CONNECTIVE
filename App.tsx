@@ -12,6 +12,8 @@ import {
   MODEL_CONFIGS,
   DEFAULT_MODEL,
   getModelInfo,
+  UserRole,
+  AdminUser,
 } from './types';
 import { COLORS, ICONS } from './constants';
 import { apiService } from './services/apiService';
@@ -278,7 +280,22 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFilesPanel, setShowFilesPanel] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  // Admin state
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [showCreateUserForm, setShowCreateUserForm] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    email: '',
+    name: '',
+    role: 'user' as UserRole,
+    organizationId: '',
+    companyId: '',
+    departmentId: '',
+  });
+  const [createUserResult, setCreateUserResult] = useState<{ userId: string; temporaryPassword: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,8 +320,12 @@ const App: React.FC = () => {
       const user: User = {
         id: result.user?.userId || email,
         name: result.user?.name || email.split('@')[0],
-        role: (result.user?.role as 'admin' | 'user') || 'user',
+        email: result.user?.email || email,
+        role: (result.user?.role as UserRole) || 'user',
         avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(result.user?.name || email)}`,
+        organizationId: result.user?.organizationId,
+        companyId: result.user?.companyId,
+        departmentId: result.user?.departmentId,
       };
       const newAuthState: AuthState = {
         isAuthenticated: true,
@@ -646,6 +667,80 @@ const App: React.FC = () => {
     );
   };
 
+  // Admin handlers
+  const isAdmin = currentUser && ['system_admin', 'org_admin', 'company_admin'].includes(currentUser.role);
+
+  const loadAdminUsers = async () => {
+    if (!authState.accessToken || !currentUser) return;
+
+    setAdminLoading(true);
+    try {
+      const users = await apiService.listUsers(currentUser.id);
+      setAdminUsers(users);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!authState.accessToken || !currentUser) return;
+
+    setAdminLoading(true);
+    setCreateUserResult(null);
+    try {
+      const result = await apiService.createUser(currentUser.id, {
+        email: newUserData.email,
+        name: newUserData.name,
+        role: newUserData.role,
+        organizationId: newUserData.organizationId || undefined,
+        companyId: newUserData.companyId || undefined,
+        departmentId: newUserData.departmentId || undefined,
+      });
+      setCreateUserResult(result);
+      setNewUserData({
+        email: '',
+        name: '',
+        role: 'user',
+        organizationId: '',
+        companyId: '',
+        departmentId: '',
+      });
+      // Refresh user list
+      await loadAdminUsers();
+    } catch (error) {
+      console.error('Failed to create user:', error);
+      alert(error instanceof Error ? error.message : 'ユーザーの作成に失敗しました');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const getRoleLabel = (role: UserRole) => {
+    const labels: Record<UserRole, string> = {
+      system_admin: 'システム管理者',
+      org_admin: '組織管理者',
+      company_admin: '会社管理者',
+      user: '一般ユーザー',
+    };
+    return labels[role];
+  };
+
+  const getAllowedRoles = (): UserRole[] => {
+    if (!currentUser) return [];
+    switch (currentUser.role) {
+      case 'system_admin':
+        return ['system_admin', 'org_admin', 'company_admin', 'user'];
+      case 'org_admin':
+        return ['company_admin', 'user'];
+      case 'company_admin':
+        return ['user'];
+      default:
+        return [];
+    }
+  };
+
   return (
     <div className="flex h-screen paper-texture text-[#1E3D6B]">
       {/* Sidebar */}
@@ -680,7 +775,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="mt-4 pt-4 border-t border-[#1E3D6B]/10 space-y-1">
-          <SidebarItem active={showFilesPanel} onClick={() => { setShowFilesPanel(!showFilesPanel); setShowSettings(false); }}>
+          <SidebarItem active={showFilesPanel} onClick={() => { setShowFilesPanel(!showFilesPanel); setShowSettings(false); setShowAdminPanel(false); }}>
             <ICONS.Paperclip />
             <span>ファイル管理</span>
             {uploadedFiles.length > 0 && (
@@ -689,9 +784,15 @@ const App: React.FC = () => {
               </span>
             )}
           </SidebarItem>
-          <SidebarItem active={showSettings} onClick={() => { setShowSettings(!showSettings); setShowFilesPanel(false); }}>
+          {isAdmin && (
+            <SidebarItem active={showAdminPanel} onClick={() => { setShowAdminPanel(!showAdminPanel); setShowSettings(false); setShowFilesPanel(false); loadAdminUsers(); }}>
+              <ICONS.Admin />
+              <span>ユーザー管理</span>
+            </SidebarItem>
+          )}
+          <SidebarItem active={showSettings} onClick={() => { setShowSettings(!showSettings); setShowFilesPanel(false); setShowAdminPanel(false); }}>
             <ICONS.Settings />
-            <span>設定 & 管理</span>
+            <span>設定</span>
           </SidebarItem>
         </div>
       </aside>
@@ -1016,6 +1117,224 @@ const App: React.FC = () => {
                     </p>
                   </section>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Admin Panel (Overlay) */}
+        {showAdminPanel && isAdmin && (
+          <div className="absolute inset-0 z-50 bg-[#1E3D6B]/20 backdrop-blur-sm flex items-center justify-center p-8">
+            <div className="paper-card w-full max-w-4xl bg-white shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-8 pb-4 border-b border-[#1E3D6B]/10">
+                <h2 className="text-2xl font-bold flex items-center gap-3 text-[#1E3D6B]">
+                  <ICONS.Admin /> ユーザー管理
+                </h2>
+                <button
+                  onClick={() => setShowAdminPanel(false)}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                {/* Current User Info */}
+                <section className="p-4 bg-[#1E3D6B]/5 rounded-xl">
+                  <p className="text-sm">
+                    ログイン中: <span className="font-bold">{currentUser?.name}</span>
+                    <span className="ml-2 px-2 py-1 bg-[#A18E66] text-white text-xs rounded-full">
+                      {getRoleLabel(currentUser?.role || 'user')}
+                    </span>
+                  </p>
+                </section>
+
+                {/* Create User Form */}
+                <section>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider">
+                      新規ユーザー作成
+                    </h3>
+                    <button
+                      onClick={() => setShowCreateUserForm(!showCreateUserForm)}
+                      className="text-sm text-[#A18E66] hover:underline"
+                    >
+                      {showCreateUserForm ? '閉じる' : '+ 新規作成'}
+                    </button>
+                  </div>
+
+                  {showCreateUserForm && (
+                    <div className="p-4 bg-[#F5F7FA] rounded-xl space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">メールアドレス</label>
+                          <input
+                            type="email"
+                            value={newUserData.email}
+                            onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                            placeholder="user@example.com"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">名前</label>
+                          <input
+                            type="text"
+                            value={newUserData.name}
+                            onChange={(e) => setNewUserData({ ...newUserData, name: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                            placeholder="山田 太郎"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">権限レベル</label>
+                          <select
+                            value={newUserData.role}
+                            onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value as UserRole })}
+                            className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                          >
+                            {getAllowedRoles().map(role => (
+                              <option key={role} value={role}>{getRoleLabel(role)}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {currentUser?.role === 'system_admin' && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">組織ID</label>
+                            <input
+                              type="text"
+                              value={newUserData.organizationId}
+                              onChange={(e) => setNewUserData({ ...newUserData, organizationId: e.target.value })}
+                              className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                              placeholder="org-001"
+                            />
+                          </div>
+                        )}
+                        {['system_admin', 'org_admin'].includes(currentUser?.role || '') && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">会社ID</label>
+                            <input
+                              type="text"
+                              value={newUserData.companyId}
+                              onChange={(e) => setNewUserData({ ...newUserData, companyId: e.target.value })}
+                              className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                              placeholder="comp-001"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-1">部門ID</label>
+                          <input
+                            type="text"
+                            value={newUserData.departmentId}
+                            onChange={(e) => setNewUserData({ ...newUserData, departmentId: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#1E3D6B]/20 rounded-lg text-sm"
+                            placeholder="dept-001"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleCreateUser}
+                        disabled={adminLoading || !newUserData.email || !newUserData.name}
+                        className="w-full py-2 bg-[#1E3D6B] text-white font-bold rounded-lg hover:bg-[#1E3D6B]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {adminLoading ? '作成中...' : 'ユーザーを作成'}
+                      </button>
+
+                      {createUserResult && (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-green-700 font-bold mb-2">ユーザーが作成されました！</p>
+                          <p className="text-sm text-green-600">
+                            仮パスワード: <code className="bg-green-100 px-2 py-1 rounded font-mono">{createUserResult.temporaryPassword}</code>
+                          </p>
+                          <p className="text-xs text-green-500 mt-1">初回ログイン時にパスワードの変更が必要です。</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                {/* User List */}
+                <section>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider">
+                      ユーザー一覧 ({adminUsers.length})
+                    </h3>
+                    <button
+                      onClick={loadAdminUsers}
+                      disabled={adminLoading}
+                      className="text-sm text-[#1E3D6B]/70 hover:text-[#1E3D6B]"
+                    >
+                      {adminLoading ? '読み込み中...' : '更新'}
+                    </button>
+                  </div>
+
+                  {adminLoading && adminUsers.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">読み込み中...</div>
+                  ) : adminUsers.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">ユーザーがいません</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {adminUsers.map(user => (
+                        <div
+                          key={user.userId}
+                          className="flex items-center justify-between p-4 bg-[#F5F7FA] rounded-xl"
+                        >
+                          <div className="flex items-center gap-4">
+                            <img
+                              src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`}
+                              alt={user.name}
+                              className="w-10 h-10 rounded-full"
+                            />
+                            <div>
+                              <p className="font-bold text-sm">{user.name}</p>
+                              <p className="text-xs opacity-60">{user.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              user.role === 'system_admin' ? 'bg-red-100 text-red-600' :
+                              user.role === 'org_admin' ? 'bg-purple-100 text-purple-600' :
+                              user.role === 'company_admin' ? 'bg-blue-100 text-blue-600' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {getRoleLabel(user.role)}
+                            </span>
+                            {user.organizationId && (
+                              <span className="text-xs opacity-50">組織: {user.organizationId}</span>
+                            )}
+                            {user.companyId && (
+                              <span className="text-xs opacity-50">会社: {user.companyId}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Role Hierarchy Info */}
+                <section className="p-4 bg-[#1E3D6B]/5 rounded-xl">
+                  <h4 className="text-xs font-bold text-[#A18E66] uppercase tracking-wider mb-3">権限階層について</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-red-100 text-red-600 rounded">システム管理者</span>
+                      <span className="opacity-60">→ 全ユーザーを管理</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-purple-100 text-purple-600 rounded">組織管理者</span>
+                      <span className="opacity-60">→ 組織内のユーザーを管理</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-600 rounded">会社管理者</span>
+                      <span className="opacity-60">→ 会社内のユーザーを管理</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded">一般ユーザー</span>
+                      <span className="opacity-60">→ チャットのみ利用可能</span>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           </div>

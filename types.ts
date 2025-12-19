@@ -193,11 +193,30 @@ export interface ChatHistory {
   updatedAt: number;
 }
 
+// User roles for multi-tenant hierarchy
+export type UserRole = 'system_admin' | 'org_admin' | 'company_admin' | 'user';
+
 export interface User {
   id: string;
   name: string;
-  role: 'admin' | 'user';
+  email?: string;
+  role: UserRole;
   avatar: string;
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
+}
+
+// Admin user types
+export interface AdminUser {
+  userId: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
+  createdAt: string;
 }
 
 // API types
