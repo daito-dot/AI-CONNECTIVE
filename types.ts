@@ -20,8 +20,8 @@ export type BedrockModel =
 
 // Gemini Models
 export type GeminiModel =
-  | 'gemini-3-flash-preview'
-  | 'gemini-3-pro-preview';
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-pro';
 
 export type AIModel = BedrockModel | GeminiModel;
 
@@ -146,25 +146,25 @@ export const MODEL_CONFIGS: Record<AIModel, ModelInfo> = {
   },
 
   // Google Gemini (Direct API)
-  'gemini-3-flash-preview': {
-    id: 'gemini-3-flash-preview',
+  'gemini-2.5-flash': {
+    id: 'gemini-2.5-flash',
     provider: 'gemini',
-    name: 'Gemini 3 Flash',
-    description: '最新・高速マルチモーダル',
+    name: 'Gemini 2.5 Flash',
+    description: '高速マルチモーダル',
     category: 'fast',
     supportsImages: true,
     maxTokens: 8192,
-    pricing: { input: 0.5, output: 3 },
+    pricing: { input: 0.15, output: 0.6 },
   },
-  'gemini-3-pro-preview': {
-    id: 'gemini-3-pro-preview',
+  'gemini-2.5-pro': {
+    id: 'gemini-2.5-pro',
     provider: 'gemini',
-    name: 'Gemini 3 Pro',
+    name: 'Gemini 2.5 Pro',
     description: 'Google最高性能',
     category: 'reasoning',
     supportsImages: true,
     maxTokens: 8192,
-    pricing: { input: 2.5, output: 10 },
+    pricing: { input: 1.25, output: 5 },
   },
 };
 

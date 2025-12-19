@@ -20,8 +20,8 @@ export type BedrockModel =
 
 // Gemini Models
 export type GeminiModel =
-  | 'gemini-3-flash-preview'
-  | 'gemini-3-pro-preview';
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-pro';
 
 export type AIModel = BedrockModel | GeminiModel;
 
