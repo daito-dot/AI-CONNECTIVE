@@ -1,5 +1,5 @@
 import type { APIGatewayEvent, APIGatewayResponse, ChatRequest } from '../types/index.js';
-import { getModelInfo } from '../config/models.js';
+import { getModelInfo, getAllModels } from '../config/models.js';
 import { invokeBedrock } from '../services/bedrock.js';
 import { invokeGemini } from '../services/gemini.js';
 
@@ -71,6 +71,5 @@ export async function modelsHandler(event: APIGatewayEvent): Promise<APIGatewayR
     return createResponse(200, {});
   }
 
-  const { getAllModels } = await import('../config/models.js');
   return createResponse(200, { models: getAllModels() });
 }
