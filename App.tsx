@@ -29,11 +29,9 @@ const SYSTEM_FILES_INIT: FileInfo[] = [
 
 // Group models by provider for UI
 const GROUPED_MODELS = {
-  'Anthropic Claude': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('anthropic.')),
-  'Amazon Nova': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('amazon.')),
-  'Meta Llama': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('meta.')),
-  'Mistral': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('mistral.')),
-  'DeepSeek': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('deepseek.')),
+  'Anthropic Claude': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('anthropic.claude')),
+  'Amazon Nova': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('amazon.nova')),
+  'Meta Llama': Object.values(MODEL_CONFIGS).filter(m => m.id.includes('meta.llama')),
   'Google Gemini': Object.values(MODEL_CONFIGS).filter(m => m.id.startsWith('gemini')),
 };
 
