@@ -12,6 +12,8 @@ import {
   SavedConversation,
   SavedMessage,
   getModelInfo,
+  UserRole,
+  AdminUser,
 } from '../types';
 
 // API endpoint from environment variable
@@ -404,6 +406,67 @@ ${fileContext}
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || 'Failed to update profile');
     }
+  }
+
+  // ============================================
+  // Admin Methods
+  // ============================================
+
+  async listUsers(authToken: string, query?: {
+    organizationId?: string;
+    companyId?: string;
+  }): Promise<AdminUser[]> {
+    const params = new URLSearchParams();
+    if (query?.organizationId) {
+      params.append('organizationId', query.organizationId);
+    }
+    if (query?.companyId) {
+      params.append('companyId', query.companyId);
+    }
+
+    const response = await fetch(`${this.endpoint}/admin/users?${params}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to list users');
+    }
+
+    const data = await response.json();
+    return data.users || [];
+  }
+
+  async createUser(authToken: string, userData: {
+    email: string;
+    name: string;
+    role: UserRole;
+    organizationId?: string;
+    companyId?: string;
+    departmentId?: string;
+    temporaryPassword?: string;
+  }): Promise<{
+    userId: string;
+    temporaryPassword: string;
+  }> {
+    const response = await fetch(`${this.endpoint}/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(userData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create user');
+    }
+
+    return response.json();
   }
 }
 
