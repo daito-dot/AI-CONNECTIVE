@@ -7,6 +7,17 @@ export type AIProvider = 'bedrock' | 'gemini';
 export type FileType = 'pdf' | 'docx' | 'txt' | 'csv' | 'xlsx';
 export type FileStatus = 'uploading' | 'processing' | 'ready' | 'error';
 
+// File visibility levels (who can access)
+export type FileVisibility =
+  | 'private'       // Only the owner
+  | 'department'    // Department members
+  | 'company'       // Company members
+  | 'organization'  // Organization members
+  | 'system';       // All users (system-wide)
+
+// File category for organization
+export type FileCategory = 'chat_attachment' | 'rag_source' | 'knowledge_base';
+
 export interface FileRecord {
   PK: string;           // FILE#{file_id}
   SK: string;           // META
@@ -16,17 +27,26 @@ export interface FileRecord {
   mimeType: string;
   s3Key: string;
   userId: string;
+  createdByRole: UserRole;
   organizationId?: string;
   companyId?: string;
+  departmentId?: string;
   uploadedAt: string;
   fileSize: number;
   status: FileStatus;
+  // Access control
+  visibility: FileVisibility;
+  category: FileCategory;
+  description?: string;
+  // Content
   extractedText?: string;
   textS3Key?: string;
   errorMessage?: string;
   // GSI keys
-  GSI1PK?: string;      // USER#{user_id}
+  GSI1PK?: string;      // USER#{user_id} or VISIBILITY#{visibility}
   GSI1SK?: string;      // FILE#{uploaded_at}
+  GSI2PK?: string;      // ORG#{org_id} or COMPANY#{company_id}
+  GSI2SK?: string;      // FILE#{uploaded_at}
 }
 
 export interface FileUploadRequest {
@@ -35,6 +55,15 @@ export interface FileUploadRequest {
   mimeType: string;
   fileData: string;     // base64 encoded
   userId?: string;
+  // Access control
+  visibility?: FileVisibility;
+  category?: FileCategory;
+  description?: string;
+  // User context (for role-based visibility)
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
+  userRole?: UserRole;
 }
 
 export interface FileUploadResponse {
