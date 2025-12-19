@@ -258,6 +258,7 @@ export interface ExtendedChatRequest extends ChatRequest {
 // File upload types
 export type FileType = 'pdf' | 'docx' | 'txt' | 'csv' | 'xlsx';
 export type FileStatus = 'uploading' | 'processing' | 'ready' | 'error';
+export type FileVisibility = 'private' | 'department' | 'company' | 'organization' | 'system';
 
 export interface UploadedFile {
   fileId: string;
@@ -266,6 +267,10 @@ export interface UploadedFile {
   status: FileStatus;
   uploadedAt: string;
   fileSize?: number;
+  visibility?: FileVisibility;
+  userId?: string;
+  organizationId?: string;
+  companyId?: string;
 }
 
 export interface FileUploadRequest {
@@ -274,6 +279,11 @@ export interface FileUploadRequest {
   mimeType: string;
   fileData: string;  // base64 encoded
   userId?: string;
+  userRole?: UserRole;
+  visibility?: FileVisibility;
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
 }
 
 export interface FileUploadResponse {

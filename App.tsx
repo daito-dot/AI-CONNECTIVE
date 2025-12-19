@@ -14,6 +14,7 @@ import {
   getModelInfo,
   UserRole,
   AdminUser,
+  FileVisibility,
 } from './types';
 import { COLORS, ICONS } from './constants';
 import { apiService } from './services/apiService';
@@ -275,6 +276,7 @@ const App: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadVisibility, setUploadVisibility] = useState<FileVisibility>('private');
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -393,7 +395,12 @@ const App: React.FC = () => {
       if (isOnline && authState.isAuthenticated && currentUser) {
         // Load uploaded files from backend
         try {
-          const files = await apiService.listFiles();
+          const files = await apiService.listFiles({
+            userRole: currentUser.role,
+            organizationId: currentUser.organizationId,
+            companyId: currentUser.companyId,
+            departmentId: currentUser.departmentId,
+          });
           setUploadedFiles(files);
         } catch (error) {
           console.error('Failed to load files:', error);
@@ -625,7 +632,13 @@ const App: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const result = await apiService.uploadFile(file);
+      const result = await apiService.uploadFile(file, {
+        visibility: uploadVisibility,
+        userRole: currentUser?.role,
+        organizationId: currentUser?.organizationId,
+        companyId: currentUser?.companyId,
+        departmentId: currentUser?.departmentId,
+      });
       const newFile: UploadedFile = {
         fileId: result.fileId,
         fileName: result.fileName,
@@ -633,6 +646,7 @@ const App: React.FC = () => {
         status: result.status,
         uploadedAt: result.uploadedAt,
         fileSize: file.size,
+        visibility: uploadVisibility,
       };
       setUploadedFiles(prev => [newFile, ...prev]);
       // Auto-select the newly uploaded file
@@ -738,6 +752,31 @@ const App: React.FC = () => {
         return ['user'];
       default:
         return [];
+    }
+  };
+
+  const getVisibilityLabel = (visibility: FileVisibility) => {
+    const labels: Record<FileVisibility, string> = {
+      private: '自分のみ',
+      department: '部門内',
+      company: '会社内',
+      organization: '組織内',
+      system: '全ユーザー',
+    };
+    return labels[visibility];
+  };
+
+  const getAllowedVisibilities = (): FileVisibility[] => {
+    if (!currentUser) return ['private'];
+    switch (currentUser.role) {
+      case 'system_admin':
+        return ['private', 'department', 'company', 'organization', 'system'];
+      case 'org_admin':
+        return ['private', 'department', 'company', 'organization'];
+      case 'company_admin':
+        return ['private', 'department', 'company'];
+      default:
+        return ['private'];
     }
   };
 
@@ -1033,6 +1072,34 @@ const App: React.FC = () => {
                   <h3 className="text-sm font-bold text-[#A18E66] uppercase tracking-wider mb-4">
                     ファイルアップロード
                   </h3>
+
+                  {/* Visibility Selector */}
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-[#1E3D6B]/70 mb-2">公開範囲</label>
+                    <div className="flex flex-wrap gap-2">
+                      {getAllowedVisibilities().map(vis => (
+                        <button
+                          key={vis}
+                          onClick={() => setUploadVisibility(vis)}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
+                            uploadVisibility === vis
+                              ? 'bg-[#A18E66] text-white border-[#A18E66]'
+                              : 'border-[#1E3D6B]/20 hover:border-[#A18E66]/50'
+                          }`}
+                        >
+                          {getVisibilityLabel(vis)}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-[#1E3D6B]/50 mt-1">
+                      {uploadVisibility === 'private' && '自分だけがアクセスできます'}
+                      {uploadVisibility === 'department' && '同じ部門のメンバーがアクセスできます'}
+                      {uploadVisibility === 'company' && '同じ会社のメンバーがアクセスできます'}
+                      {uploadVisibility === 'organization' && '同じ組織のメンバーがアクセスできます'}
+                      {uploadVisibility === 'system' && '全てのユーザーがアクセスできます'}
+                    </p>
+                  </div>
+
                   <label className={`block w-full py-8 border-2 border-dashed border-[#A18E66]/30 text-[#A18E66] text-sm font-bold rounded-xl hover:bg-[#A18E66]/5 transition-colors cursor-pointer text-center ${isUploading ? 'opacity-50' : ''}`}>
                     {isUploading ? (
                       <span className="flex items-center justify-center gap-2">
@@ -1090,6 +1157,17 @@ const App: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            {file.visibility && (
+                              <span className={`px-2 py-0.5 text-[10px] rounded-full ${
+                                file.visibility === 'system' ? 'bg-red-100 text-red-600' :
+                                file.visibility === 'organization' ? 'bg-purple-100 text-purple-600' :
+                                file.visibility === 'company' ? 'bg-blue-100 text-blue-600' :
+                                file.visibility === 'department' ? 'bg-green-100 text-green-600' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {getVisibilityLabel(file.visibility)}
+                              </span>
+                            )}
                             {selectedFileIds.includes(file.fileId) && (
                               <span className="text-xs text-[#A18E66] font-bold">選択中</span>
                             )}
