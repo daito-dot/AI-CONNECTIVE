@@ -319,6 +319,25 @@ ${fileContext}
     return response.json();
   }
 
+  async confirmSignUp(email: string, code: string): Promise<{
+    message: string;
+  }> {
+    const response = await fetch(`${this.endpoint}/auth/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Verification failed');
+    }
+
+    return response.json();
+  }
+
   async signIn(email: string, password: string): Promise<{
     accessToken: string;
     idToken: string;
