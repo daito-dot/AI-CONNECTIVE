@@ -347,9 +347,9 @@ async function createUser(requestingUser: UserRecord, body: {
         { Name: 'email_verified', Value: 'true' },
         { Name: 'name', Value: name },
         { Name: 'custom:role', Value: role },
-        { Name: 'custom:organizationId', Value: organizationId || '' },
-        { Name: 'custom:companyId', Value: companyId || '' },
-        { Name: 'custom:departmentId', Value: departmentId || '' },
+        { Name: 'custom:orgId', Value: organizationId || '' },
+        { Name: 'custom:compId', Value: companyId || '' },
+        { Name: 'custom:deptId', Value: departmentId || '' },
       ],
       MessageAction: 'SUPPRESS', // Don't send welcome email
     }));
