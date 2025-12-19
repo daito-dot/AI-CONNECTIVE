@@ -1,6 +1,137 @@
 // AI Provider types
 export type AIProvider = 'bedrock' | 'gemini';
 
+// ============================================
+// File Types
+// ============================================
+export type FileType = 'pdf' | 'docx' | 'txt' | 'csv' | 'xlsx';
+export type FileStatus = 'uploading' | 'processing' | 'ready' | 'error';
+
+export interface FileRecord {
+  PK: string;           // FILE#{file_id}
+  SK: string;           // META
+  fileId: string;
+  fileName: string;
+  fileType: FileType;
+  mimeType: string;
+  s3Key: string;
+  userId: string;
+  organizationId?: string;
+  companyId?: string;
+  uploadedAt: string;
+  fileSize: number;
+  status: FileStatus;
+  extractedText?: string;
+  textS3Key?: string;
+  errorMessage?: string;
+  // GSI keys
+  GSI1PK?: string;      // USER#{user_id}
+  GSI1SK?: string;      // FILE#{uploaded_at}
+}
+
+export interface FileUploadRequest {
+  fileName: string;
+  fileType: FileType;
+  mimeType: string;
+  fileData: string;     // base64 encoded
+  userId?: string;
+}
+
+export interface FileUploadResponse {
+  fileId: string;
+  fileName: string;
+  status: FileStatus;
+  uploadedAt: string;
+}
+
+export interface FileQueryRequest {
+  query: string;
+  model?: string;
+}
+
+export interface FileQueryResponse {
+  answer: string;
+  sourceData?: string;
+}
+
+// ============================================
+// Conversation Types
+// ============================================
+export interface Conversation {
+  PK: string;           // CONV#{conversation_id}
+  SK: string;           // META
+  conversationId: string;
+  title: string;
+  userId: string;
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  // GSI keys
+  GSI1PK?: string;      // USER#{user_id}
+  GSI1SK?: string;      // CONV#{updated_at}
+}
+
+export interface ConversationMessage {
+  PK: string;           // CONV#{conversation_id}
+  SK: string;           // MSG#{timestamp}#{message_id}
+  messageId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  attachments?: FileAttachment[];
+  fileReferences?: string[];  // fileIds
+  modelId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cost?: number;
+  createdAt: string;
+}
+
+// ============================================
+// User & Organization Types (for future auth)
+// ============================================
+export type UserRole = 'system_admin' | 'org_admin' | 'company_admin' | 'user';
+
+export interface User {
+  PK: string;           // USER#{user_id}
+  SK: string;           // META
+  userId: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  organizationId?: string;
+  companyId?: string;
+  departmentId?: string;
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+// ============================================
+// Usage Types
+// ============================================
+export interface DailyUsage {
+  PK: string;           // USAGE#{date}
+  SK: string;           // {organization_id}#{company_id}#{user_id}
+  date: string;
+  organizationId?: string;
+  companyId?: string;
+  userId: string;
+  modelUsage: Record<string, {
+    requestCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    cost: number;
+  }>;
+  fileUploads: number;
+  fileStorageBytes: number;
+}
+
 // Bedrock Models (using us. prefix for cross-region inference)
 export type BedrockModel =
   // Anthropic Claude
